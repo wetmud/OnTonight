@@ -1,0 +1,795 @@
+# ⚡ EventPulse — Full Product Roadmap
+## From MVP to Real Product: Step-by-Step Strategy for AI-Assisted & Human Developers
+
+---
+
+> **Who this is for:** This document is written for both AI coding assistants (Claude, Copilot, Cursor) and human developers. Each phase includes exact instructions, prompts, and architecture decisions. Follow phases in order — each one builds on the last.
+
+---
+
+## 📍 WHERE YOU ARE NOW
+
+- Static React app on GitHub Pages
+- Demo/seeded data only
+- No backend, no database, no real users
+- Calendar UI, Discover feed, Like/Notify system (in-memory only)
+- Deployed at: `https://wetmud.github.io/eventpulse/`
+
+---
+
+## 🗺 ROADMAP OVERVIEW
+
+| Phase | Name | What You Build | Difficulty |
+|-------|------|---------------|------------|
+| 1 | Foundation | Real backend + database + hosting | ⭐⭐ |
+| 2 | Real APIs | Live event data from Ticketmaster etc. | ⭐⭐ |
+| 3 | User Accounts | Auth, saved events, notifications | ⭐⭐⭐ |
+| 4 | User Submissions | Add shows, venues, listings | ⭐⭐⭐ |
+| 5 | Map View | Interactive full map with pins | ⭐⭐⭐ |
+| 6 | Discovery Engine | Personalized feed, trending, AI recs | ⭐⭐⭐⭐ |
+| 7 | Mobile App | React Native / PWA | ⭐⭐⭐⭐ |
+| 8 | Monetization | Tickets affiliate, promoted listings | ⭐⭐⭐⭐ |
+
+---
+
+---
+
+# PHASE 1 — FOUNDATION
+## Real Backend, Database & Hosting
+
+**Goal:** Replace GitHub Pages with a real server. Set up a database. Move from static demo data to a real API layer.
+
+**Time estimate:** 1–2 days with AI assistance
+
+---
+
+### Step 1.1 — Choose Your Stack
+
+Use this exact stack (free tiers available for all):
+
+| Layer | Tool | Why |
+|-------|------|-----|
+| Frontend hosting | **Vercel** | Free, instant deploys from GitHub |
+| Backend hosting | **Railway** | Free tier, easy Node.js hosting |
+| Database | **Supabase** (PostgreSQL) | Free tier, built-in auth, real-time |
+| Cache | **Upstash Redis** | Free tier, serverless Redis |
+| File storage | **Supabase Storage** | For images/uploads |
+
+---
+
+### Step 1.2 — Set Up Supabase
+
+1. Go to [supabase.com](https://supabase.com) → Create account → New project
+2. Name it `eventpulse`, choose a region close to Toronto (US East)
+3. Save your **Project URL** and **anon public key** — you'll need these
+4. Go to **SQL Editor** and run this schema:
+
+
+
+-- VENUES
+CREATE TABLE venues (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  name TEXT NOT NULL,
+  address TEXT,
+  city TEXT DEFAULT 'Toronto',
+  region TEXT DEFAULT 'ON',
+  country TEXT DEFAULT 'CA',
+  latitude DECIMAL(10, 8),
+  longitude DECIMAL(11, 8),
+  capacity INTEGER,
+  image_url TEXT,
+  website TEXT,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- EVENTS
+CREATE TABLE events (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  source TEXT NOT NULL,
+  source_id TEXT,
+  title TEXT NOT NULL,
+  description TEXT,
+  category TEXT,
+  subcategory TEXT,
+  event_date DATE NOT NULL,
+  start_time TIME,
+  end_time TIME,
+  venue_id UUID REFERENCES venues(id),
+  price_min DECIMAL(10,2),
+  price_max DECIMAL(10,2),
+  currency TEXT DEFAULT 'CAD',
+  ticket_url TEXT,
+  image_url TEXT,
+  popularity_score INTEGER DEFAULT 0,
+  is_verified BOOLEAN DEFAULT false,
+  submitted_by UUID,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW(),
+  UNIQUE(source, source_id)
+);
+
+-- USERS (extends Supabase auth.users)
+CREATE TABLE profiles (
+  id UUID PRIMARY KEY REFERENCES auth.users(id),
+  username TEXT UNIQUE,
+  display_name TEXT,
+  avatar_url TEXT,
+  city TEXT DEFAULT 'Toronto',
+  radius_km INTEGER DEFAULT 80,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- SAVED EVENTS
+CREATE TABLE saved_events (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID REFERENCES profiles(id) ON DELETE CASCADE,
+  event_id UUID REFERENCES events(id) ON DELETE CASCADE,
+  notify BOOLEAN DEFAULT false,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  UNIQUE(user_id, event_id)
+);
+
+-- FOLLOWED ARTISTS/VENUES
+CREATE TABLE follows (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID REFERENCES profiles(id) ON DELETE CASCADE,
+  entity_type TEXT CHECK (entity_type IN ('artist', 'venue')),
+  entity_name TEXT NOT NULL,
+  entity_id TEXT,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  UNIQUE(user_id, entity_type, entity_name)
+);
+
+-- INDEXES
+CREATE INDEX idx_events_date ON events(event_date);
+CREATE INDEX idx_events_category ON events(category);
+CREATE INDEX idx_events_venue ON events(venue_id);
+CREATE INDEX idx_venues_city ON venues(city);
+CREATE INDEX idx_saved_user ON saved_events(user_id);
+CREATE INDEX idx_follows_user ON follows(user_id);
+
+
+
+---
+
+### Step 1.3 — Set Up Backend on Railway
+
+**AI Prompt to use:**
+> "Create a Node.js Express API server with the following: connect to Supabase PostgreSQL using the `@supabase/supabase-js` client, add CORS middleware, add rate limiting with `express-rate-limit`, add a `/api/events` GET endpoint that accepts query params: `city`, `month`, `year`, `category`, and returns events joined with venue data."
+
+1. Go to [railway.app](https://railway.app) → New Project → Deploy from GitHub
+2. Create a new folder in your repo: `/server`
+3. Add these files to `/server`:
+
+**`/server/package.json`:**
+
+
+{
+  "name": "eventpulse-server",
+  "version": "1.0.0",
+  "scripts": {
+    "start": "node index.js",
+    "dev": "nodemon index.js"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.39.0",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.1",
+    "express": "^4.18.2",
+    "express-rate-limit": "^7.1.5",
+    "node-cron": "^3.0.3"
+  }
+}
+
+
+
+**`/server/.env` (never commit this file):**
+
+
+SUPABASE_URL=your_supabase_project_url
+SUPABASE_SERVICE_KEY=your_supabase_service_role_key
+TICKETMASTER_API_KEY=your_key
+EVENTBRITE_API_KEY=your_key
+BANDSINTOWN_APP_ID=your_app_id
+PORT=3001
+
+
+
+---
+
+### Step 1.4 — Move Frontend to Vercel
+
+1. Go to [vercel.com](https://vercel.com) → Import your GitHub repo
+2. Set **Root Directory** to `/` (or wherever your `vite.config.js` lives)
+3. Add environment variable: `VITE_API_URL=https://your-railway-app.railway.app`
+4. Deploy
+
+Your app will now auto-deploy every time you push to `main`.
+
+---
+
+---
+
+# PHASE 2 — REAL APIs
+## Live Event Data
+
+**Goal:** Pull real events from Ticketmaster, Eventbrite, and Bandsintown into your database on a schedule.
+
+**Time estimate:** 2–3 days
+
+---
+
+### Step 2.1 — Get Your API Keys
+
+#### Ticketmaster (easiest, most data)
+1. Go to [developer.ticketmaster.com](https://developer.ticketmaster.com)
+2. Sign up → Create App → Copy your **Consumer Key**
+3. Free tier: 5,000 calls/day — more than enough to start
+4. GTA query example:
+   
+
+   https://app.ticketmaster.com/discovery/v2/events.json
+     ?apikey=YOUR_KEY
+     &city=Toronto
+     &countryCode=CA
+     &radius=80
+     &unit=km
+     &size=200
+   
+
+
+#### Eventbrite
+1. Go to [eventbrite.com/platform](https://www.eventbrite.com/platform)
+2. Sign up as developer → Create a Private Token
+3. Endpoint: `https://www.eventbriteapi.com/v3/events/search/`
+4. Params: `location.address=Toronto,ON`, `location.within=80km`
+
+#### Bandsintown
+1. Go to [artists.bandsintown.com/api](https://artists.bandsintown.com/api)
+2. Apply for API access (usually approved within 24 hours)
+3. Best for: concert-specific data, artist following
+
+#### Songkick
+1. Go to [songkick.com/developer](https://www.songkick.com/developer)
+2. Fill out API access form
+3. Best for: metro area coverage, venue data
+
+---
+
+### Step 2.2 — Build the Sync Service
+
+Create `/server/services/sync.js`. This runs on a schedule and fetches events from all APIs.
+
+**AI Prompt to use:**
+> "Write a Node.js module that fetches events from the Ticketmaster Discovery API for Toronto, CA within 80km radius. Normalize each event to this schema: `{ source, sourceId, title, category, eventDate, startTime, venueName, venueAddress, latitude, longitude, priceMin, priceMax, ticketUrl, imageUrl }`. Handle pagination, rate limiting with exponential backoff, and return an array of normalized events."
+
+**Key normalization logic to implement:**
+
+
+
+// Category mapping from Ticketmaster segments
+const CATEGORY_MAP = {
+  'Music': 'Concerts',
+  'Sports': 'Sports',
+  'Arts & Theatre': 'Theatre',
+  'Film': 'Other',
+  'Miscellaneous': 'Other',
+  'Comedy': 'Comedy',
+  'Family': 'Festivals',
+};
+
+// Deduplication: before inserting, check for existing event
+// Match on: same venue + same date + title similarity > 80%
+async function isDuplicate(event, supabase) {
+  const { data } = await supabase
+    .from('events')
+    .select('id, title')
+    .eq('event_date', event.eventDate)
+    .eq('venue_id', event.venueId);
+  
+  if (!data?.length) return false;
+  
+  return data.some(existing => 
+    stringSimilarity(existing.title, event.title) > 0.8
+  );
+}
+
+
+
+---
+
+### Step 2.3 — Schedule the Sync
+
+Add to your server's `index.js`:
+
+
+
+import cron from 'node-cron';
+import { syncAllSources } from './services/sync.js';
+
+// Run every 6 hours
+cron.schedule('0 */6 * * *', async () => {
+  console.log('Starting event sync...');
+  await syncAllSources();
+  console.log('Sync complete');
+});
+
+// Also expose a manual trigger endpoint (protect with API key)
+app.post('/api/admin/sync', adminAuthMiddleware, async (req, res) => {
+  await syncAllSources();
+  res.json({ success: true });
+});
+
+
+
+---
+
+### Step 2.4 — Connect Frontend to Real Data
+
+Replace the demo data in `EventPulse.jsx`:
+
+**AI Prompt to use:**
+> "Refactor the EventPulse React component to fetch events from `${import.meta.env.VITE_API_URL}/api/events` using React Query (TanStack Query). Pass query params for the current month and year. Show a loading skeleton while fetching. Handle errors gracefully with a retry button."
+
+Install React Query:
+
+
+npm install @tanstack/react-query
+
+
+
+---
+
+---
+
+# PHASE 3 — USER ACCOUNTS
+## Auth, Saved Events & Notifications
+
+**Goal:** Let users sign up, save events, follow artists/venues, and get notified.
+
+**Time estimate:** 2–3 days
+
+---
+
+### Step 3.1 — Add Supabase Auth
+
+Supabase gives you auth for free. Add to your frontend:
+
+
+
+npm install @supabase/supabase-js @supabase/auth-ui-react
+
+
+
+**AI Prompt to use:**
+> "Add Supabase authentication to the EventPulse React app. Create a login/signup modal that appears when the user clicks a profile icon in the header. Support email/password and Google OAuth. After login, show the user's avatar in the header. Store the session in Zustand state."
+
+Enable in Supabase Dashboard:
+- **Authentication → Providers → Email** (already on)
+- **Authentication → Providers → Google** (add Google OAuth credentials)
+
+---
+
+### Step 3.2 — Persist Likes & Notifications
+
+Right now likes/notifies are lost on refresh. Fix this:
+
+**AI Prompt to use:**
+> "Update the like and notify handlers in EventPulse to call the Supabase `saved_events` table. If the user is not logged in, show a 'Sign in to save events' prompt. If they are logged in, upsert a row with `user_id`, `event_id`, and `notify` boolean. On app load, fetch the user's saved events and pre-populate the liked/notified state."
+
+---
+
+### Step 3.3 — Follow Artists & Venues
+
+**AI Prompt to use:**
+> "Add a follow button to each EventCard. When clicked, insert a row into the `follows` table with `entity_type` ('artist' or 'venue'), `entity_name`, and `user_id`. Create a 'Following' sidebar section that lists all followed artists and venues with unfollow buttons."
+
+---
+
+### Step 3.4 — Email Notifications
+
+Use [Resend](https://resend.com) (free tier: 3,000 emails/month):
+
+1. Sign up at resend.com → Get API key
+2. Add `RESEND_API_KEY` to your Railway env vars
+3. Create a daily cron job that:
+   - Finds all users with `notify: true` saved events
+   - Checks if those events are within the next 7 days
+   - Sends a digest email
+
+**AI Prompt to use:**
+> "Write a Node.js function that queries Supabase for all saved_events where notify=true and the event date is between today and 7 days from now. Group by user. For each user, send an HTML email using the Resend API listing their upcoming events with title, date, venue, and ticket link."
+
+---
+
+---
+
+# PHASE 4 — USER SUBMISSIONS
+## Add Shows, Venues & Listings
+
+**Goal:** Let promoters, artists, and fans add events and venues directly to EventPulse.
+
+**Time estimate:** 2–3 days
+
+---
+
+### Step 4.1 — Submission Form UI
+
+**AI Prompt to use:**
+> "Create a 'Submit an Event' modal in EventPulse with these fields: Event Title, Category (dropdown), Date, Start Time, End Time, Venue (searchable dropdown from existing venues OR 'Add new venue'), Price Min, Price Max (or 'Free' toggle), Ticket URL, Description, Image Upload. On submit, POST to `/api/events/submit`. Show a 'Pending Review' confirmation."
+
+---
+
+### Step 4.2 — Moderation Queue
+
+Add a simple admin dashboard (password-protected page):
+
+**AI Prompt to use:**
+> "Create an admin page at `/admin` in the EventPulse app, protected by a hardcoded admin password stored in an env variable. The page shows a list of events where `is_verified = false`, with Approve and Reject buttons. Approving sets `is_verified = true`. Rejecting deletes the record."
+
+---
+
+### Step 4.3 — Venue Submissions
+
+
+
+-- Add a venues_pending table for unverified submissions
+CREATE TABLE venues_pending (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  name TEXT NOT NULL,
+  address TEXT,
+  city TEXT,
+  latitude DECIMAL(10,8),
+  longitude DECIMAL(11,8),
+  submitted_by UUID,
+  status TEXT DEFAULT 'pending',
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+
+
+---
+
+---
+
+# PHASE 5 — MAP VIEW
+## Full Interactive Map with Event Pins
+
+**Goal:** Show all events on a map. Click a pin to see the event. Filter by category.
+
+**Time estimate:** 1–2 days
+
+---
+
+### Step 5.1 — Choose Your Map Library
+
+Use **Mapbox GL JS** — best free tier, beautiful dark mode maps.
+
+1. Sign up at [mapbox.com](https://mapbox.com) → Get your **public access token**
+2. Free tier: 50,000 map loads/month
+
+
+
+npm install mapbox-gl react-map-gl
+
+
+
+---
+
+### Step 5.2 — Build the Map Component
+
+**AI Prompt to use:**
+> "Create a MapView React component using react-map-gl and Mapbox. Center the map on Toronto (lat: 43.6532, lng: -79.3832) at zoom level 11. Fetch all events for the current month from the API. Place a pin/marker at each venue's lat/lng. Color the pin based on the event category. Clicking a pin opens a popup with the event title, date, time, and a 'View Details' button. Support clustering for overlapping pins."
+
+---
+
+### Step 5.3 — Add Map Toggle to Header
+
+Add a toggle button to switch between Calendar view and Map view:
+
+**AI Prompt to use:**
+> "Add a view toggle to the EventPulse header with two options: Calendar (grid icon) and Map (pin icon). Animate the transition between views using Framer Motion's `AnimatePresence`. The map view takes full width. Preserve the sidebar with category breakdown and hot dates."
+
+---
+
+### Step 5.4 — Geolocation
+
+**AI Prompt to use:**
+> "Add a 'Use my location' button to EventPulse. When clicked, use the browser's `navigator.geolocation.getCurrentPosition()` API to get the user's coordinates. Store them in Zustand. Use those coordinates as the center for the map and as the origin for calculating which events are within the selected radius. Update the '80 km radius' stat dynamically."
+
+---
+
+---
+
+# PHASE 6 — DISCOVERY ENGINE
+## Personalized Feed, Trending & AI Recommendations
+
+**Goal:** Make the Discover section smart — show users events they'll actually care about.
+
+**Time estimate:** 3–5 days
+
+---
+
+### Step 6.1 — Trending Algorithm
+
+Add a popularity scoring system to your database:
+
+
+
+-- Add view tracking
+CREATE TABLE event_views (
+  event_id UUID REFERENCES events(id),
+  viewed_at TIMESTAMPTZ DEFAULT NOW(),
+  user_id UUID
+);
+
+-- Update popularity score daily via cron
+-- Score = (saves * 3) + (views * 1) + (notifies * 2)
+-- Decay by 10% per day past the event date
+
+
+
+**AI Prompt to use:**
+> "Write a SQL function in Supabase that calculates a popularity score for each event based on: number of saves (weight 3), number of views (weight 1), number of notifies (weight 2). Apply a time-decay factor so events further in the future score slightly lower. Run this as a scheduled function every hour."
+
+---
+
+### Step 6.2 — Personalized Recommendations
+
+**AI Prompt to use:**
+> "Add a personalized recommendations endpoint at `/api/events/recommended` that takes a `user_id` parameter. Query the user's saved events and followed artists/venues to find their most common categories. Return events from those categories sorted by popularity score, excluding events they've already saved."
+
+---
+
+### Step 6.3 — AI-Powered Descriptions (Optional)
+
+Use Claude API to auto-generate event descriptions:
+
+**AI Prompt to use:**
+> "Create a background job that runs when a new event is inserted without a description. Call the Anthropic Claude API with the event title, category, venue, and artist name. Ask it to write a 2-sentence exciting event description in a nightlife/concert tone. Save the result to the event's description field."
+
+Add to Railway env: `ANTHROPIC_API_KEY=your_key`
+
+---
+
+---
+
+# PHASE 7 — MOBILE / PWA
+## Works on Phone Like a Native App
+
+**Goal:** Make EventPulse installable on phones without an app store.
+
+**Time estimate:** 1 day
+
+---
+
+### Step 7.1 — Progressive Web App Setup
+
+**AI Prompt to use:**
+> "Convert the EventPulse Vite React app into a Progressive Web App. Add a `manifest.json` with app name 'EventPulse', theme color #8b5cf6, background color #0a0a12, and icons. Add a Vite PWA plugin (`vite-plugin-pwa`) with a service worker that caches the app shell and API responses for offline viewing. Add an 'Install App' banner that appears on mobile."
+
+
+
+npm install vite-plugin-pwa
+
+
+
+---
+
+### Step 7.2 — Push Notifications
+
+**AI Prompt to use:**
+> "Add Web Push notifications to EventPulse using the Web Push API and VAPID keys. When a user enables notifications for an event, subscribe their browser and save the subscription endpoint to Supabase. Create a server endpoint that sends push notifications 24 hours before an event using the `web-push` npm package."
+
+---
+
+---
+
+# PHASE 8 — MONETIZATION
+## Turn EventPulse Into a Business
+
+**Goal:** Generate revenue while keeping the core experience free.
+
+---
+
+### Step 8.1 — Ticketmaster Affiliate Program
+
+1. Apply at [Ticketmaster Affiliate Program](https://www.ticketmaster.com/affiliate)
+2. Add your affiliate ID to all Ticketmaster ticket links
+3. Earn 2–5% commission on every ticket sold through your links
+4. **Implementation:** Add `?camefrom=YOUR_AFFILIATE_ID` to all Ticketmaster URLs
+
+---
+
+### Step 8.2 — Promoted Listings
+
+Add a `is_promoted` boolean and `promotion_expires_at` to the events table. Promoted events:
+- Show at the top of the Discover feed
+- Get a "Promoted" badge
+- Have a subtle highlighted border on the calendar
+
+**Pricing suggestion:** $25–$75/week per promoted listing for local venues.
+
+**AI Prompt to use:**
+> "Add a promoted events system to EventPulse. Events with `is_promoted = true` appear first in the Discover feed with a subtle 'Sponsored' label and a slightly glowing border. Create an admin endpoint to mark an event as promoted with an expiry date."
+
+---
+
+### Step 8.3 — Venue Pro Accounts
+
+Venues pay a monthly fee for:
+- Verified badge on listings
+- Ability to submit unlimited events
+- Analytics dashboard (views, saves, clicks)
+- Featured placement
+
+**Stack for payments:** [Stripe](https://stripe.com) — use Stripe Checkout for simplicity.
+
+---
+
+---
+
+# 🔐 ENVIRONMENT VARIABLES REFERENCE
+
+Store ALL of these in Railway (backend) and Vercel (frontend). Never commit to GitHub.
+
+### Backend (Railway)
+
+
+SUPABASE_URL=
+SUPABASE_SERVICE_KEY=
+TICKETMASTER_API_KEY=
+EVENTBRITE_API_KEY=
+BANDSINTOWN_APP_ID=
+SONGKICK_API_KEY=
+RESEND_API_KEY=
+MAPBOX_SECRET_TOKEN=
+ANTHROPIC_API_KEY=
+VAPID_PUBLIC_KEY=
+VAPID_PRIVATE_KEY=
+ADMIN_PASSWORD=
+STRIPE_SECRET_KEY=
+PORT=3001
+
+
+
+### Frontend (Vercel)
+
+
+VITE_API_URL=https://your-app.railway.app
+VITE_SUPABASE_URL=
+VITE_SUPABASE_ANON_KEY=
+VITE_MAPBOX_TOKEN=
+VITE_VAPID_PUBLIC_KEY=
+VITE_STRIPE_PUBLIC_KEY=
+
+
+
+---
+
+---
+
+# 📁 FINAL PROJECT STRUCTURE
+
+
+
+eventpulse/
+├── src/                          # Frontend (React/Vite)
+│   ├── components/
+│   │   ├── Calendar/
+│   │   │   ├── CalendarGrid.jsx
+│   │   │   ├── DateCell.jsx
+│   │   │   └── DateBubble.jsx
+│   │   ├── Discover/
+│   │   │   ├── DiscoverFeed.jsx
+│   │   │   └── DiscoverCard.jsx
+│   │   ├── Map/
+│   │   │   └── MapView.jsx
+│   │   ├── Auth/
+│   │   │   └── AuthModal.jsx
+│   │   ├── Submit/
+│   │   │   └── SubmitEventModal.jsx
+│   │   └── shared/
+│   │       ├── EventCard.jsx
+│   │       ├── SourceBadge.jsx
+│   │       └── Toast.jsx
+│   ├── hooks/
+│   │   ├── useEvents.js
+│   │   ├── useAuth.js
+│   │   └── useSavedEvents.js
+│   ├── store/
+│   │   └── useStore.js           # Zustand
+│   ├── lib/
+│   │   └── supabase.js
+│   ├── EventPulse.jsx            # Main app
+│   └── main.jsx
+│
+├── server/                       # Backend (Node/Express on Railway)
+│   ├── routes/
+│   │   ├── events.js
+│   │   ├── venues.js
+│   │   └── admin.js
+│   ├── services/
+│   │   ├── sync.js               # API aggregation
+│   │   ├── ticketmaster.js
+│   │   ├── eventbrite.js
+│   │   ├── bandsintown.js
+│   │   ├── dedup.js              # Deduplication logic
+│   │   └── notifications.js
+│   ├── middleware/
+│   │   ├── auth.js
+│   │   └── rateLimit.js
+│   ├── index.js
+│   └── package.json
+│
+├── index.html
+├── vite.config.js
+├── package.json
+└── .github/
+    └── workflows/
+        └── deploy.yml
+
+
+
+---
+
+---
+
+# 🤖 AI ASSISTANT TIPS
+
+When working with Claude, Cursor, or Copilot on this project, use these strategies:
+
+### Always give context first
+Start prompts with:
+> "I'm building EventPulse, a React/Vite event aggregation calendar app. The backend is Node.js/Express on Railway, database is Supabase PostgreSQL. Here is the current state of [file]..."
+
+### Request specific file output
+> "Write the complete contents of `/server/services/ticketmaster.js`"
+
+### Ask for error handling explicitly
+> "...and include try/catch, log errors to console, and return null on failure instead of throwing"
+
+### Break large features into steps
+Instead of "build the whole auth system", ask:
+1. "Add the Supabase client to the frontend"
+2. "Create the AuthModal component"
+3. "Add the login handler"
+4. "Persist the session in Zustand"
+
+---
+
+---
+
+# 🚀 LAUNCH CHECKLIST
+
+Before telling people about it:
+
+- [ ] Real events loading from at least 1 API (Ticketmaster)
+- [ ] User signup/login working
+- [ ] Likes and notifies persist after refresh
+- [ ] Mobile layout looks good
+- [ ] Custom domain set up (buy on Namecheap, ~$12/year)
+- [ ] Privacy policy page added
+- [ ] Error pages (404, 500) look decent
+- [ ] Google Analytics added
+- [ ] Performance: Lighthouse score > 80
+
+---
+
+---
+
+# 📊 METRICS TO TRACK FROM DAY 1
+
+Set up [Plausible](https://plausible.io) (privacy-friendly, $9/month) or Google Analytics:
+
+- Daily active users
+- Most viewed dates/events
+- Most clicked ticket links (= revenue signal)
+- Sign-up conversion rate
+- Most searched artists/venues
+- Mobile vs desktop split
+
+---
+
+*Built with ⚡ by EventPulse — Toronto's Event Intelligence Platform*
+*Roadmap version 1.0 — March 2026*
