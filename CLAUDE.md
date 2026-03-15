@@ -21,7 +21,7 @@
 
 | Layer | Service | Notes |
 |-------|---------|-------|
-| Frontend | **Vercel** | Auto-deploys from GitHub `main`. NOT YET SET UP. |
+| Frontend | **Vercel** | Auto-deploys from GitHub `main`. Live. |
 | Backend | **Railway** | Node.js/Express. Root directory = `/server`. Running on port 3001. |
 | Database | **Supabase** | PostgreSQL. Project ID: `jrdfcngdggqanjgxohjk`. Region: US East. |
 | Cache | Upstash Redis | Not yet set up (Phase 1 stretch goal) |
@@ -29,7 +29,7 @@
 
 ---
 
-## 📍 Current Phase: Phase 2 — Real APIs
+## 📍 Current Phase: Phase 2 — Real APIs (code complete, Railway config in progress)
 
 ### ✅ Phase 1 COMPLETE
 
@@ -54,50 +54,95 @@
 
 ---
 
-## 📁 Files Created This Session
+### 🟡 Phase 2 — Code Written, Needs Deploy + Sign-off
 
-All new server files are at `/server/`. Frontend changes are in `/src/` and the root.
+All Phase 2 files have been written and committed to GitHub via github.dev. Railway and Vercel will auto-deploy from `main`.
+
+**Files added/modified for Phase 2:**
 
 ```
 eventpulse/
-├── .env.example              ← NEW: template for Vercel env vars
-├── .gitignore                ← NEW: ignores node_modules, .env, dist, logs
-├── vite.config.js            ← MODIFIED: removed base: '/eventpulse/' (was GitHub Pages only)
+├── package.json                      ← MODIFIED: added @tanstack/react-query ^5.28.0
 ├── src/
-│   └── lib/
-│       └── supabase.js       ← NEW: Supabase client for frontend (uses VITE_ env vars)
+│   ├── main.jsx                      ← MODIFIED: wrapped app in QueryClientProvider
+│   └── EventPulse.jsx                ← REWRITTEN: real API data via useQuery, dynamic month nav, loading skeleton, error banner
 └── server/
-    ├── package.json          ← NEW: Express server dependencies
-    ├── index.js              ← NEW: Main Express app, Supabase client, routes, health check
-    ├── .env.example          ← NEW: template for Railway env vars
-    ├── .gitignore            ← NEW: ignores server/node_modules, .env
+    ├── index.js                      ← MODIFIED: added node-cron + syncAllSources every 6h
     ├── routes/
-    │   ├── events.js         ← NEW: GET /api/events, GET /api/events/:id, POST /api/events/submit
-    │   ├── venues.js         ← NEW: GET /api/venues, GET /api/venues/:id
-    │   └── admin.js          ← NEW: protected admin routes (pending, approve, reject, sync)
-    └── middleware/
-        ├── auth.js           ← NEW: x-admin-key header check against ADMIN_PASSWORD env var
-        └── rateLimit.js      ← NEW: apiLimiter (200/15min), strictLimiter (20/min)
+    │   └── admin.js                  ← MODIFIED: POST /sync now calls syncAllSources()
+    └── services/
+        ├── ticketmaster.js           ← NEW: fetches + normalizes GTA events from Ticketmaster API
+        └── sync.js                   ← NEW: upserts venues + events into Supabase, deduplicates by source+source_id
 ```
 
-### Key code notes:
-- Server uses **ESM modules** (`"type": "module"` in server/package.json) — use `import/export`, not `require`
-- Supabase client exported from `server/index.js` and imported by routes
-- Admin routes protected by `x-admin-key` request header
-- CORS origin set from `FRONTEND_URL` env var (falls back to `*` if not set)
+**Key Phase 2 code notes:**
+- `server/services/ticketmaster.js` — paginates all pages, 250ms rate-limit delay, exponential backoff on 429
+- `server/services/sync.js` — `upsertVenue()` + `upsertEvents()` in batches of 50, `UNIQUE(source, source_id)` dedup
+- Cron: `0 */6 * * *` (every 6 hours) in `server/index.js`
+- Frontend: `useQuery(["events", year, month])` fetches `/api/events?month=X&year=Y&limit=500`
+- `normalizeApiEvent()` maps Supabase fields → UI shape (event_date → day, start_time → time, venues.name → venue, etc.)
+- Liked/notified stored as `Set` state, injected into events on each render (not persisted yet)
+- Dynamic month/year navigation with rollover
+
+**⚠️ Phase 2 sign-off still needed:**
+
+**Step A — Fix Railway deploy (not yet stable):**
+Railway kept trying to run `vite build` from the wrong directory. Correct settings:
+- Root Directory: *(blank)*
+- Build Command: `cd server && npm install`
+- Start Command: `cd server && node index.js`
+
+**Step B — Once Railway is green:**
+1. Trigger manual sync: `POST https://eventpulse-production-0256.up.railway.app/api/admin/sync` with header `x-admin-key: [ADMIN_PASSWORD from Railway env vars]`
+2. Verify events appear in Supabase Table Editor → `events` table
+3. Verify frontend calendar at Vercel URL shows real events
+
+---
+
+## 📁 Full File Tree (Phase 1 + 2)
+
+```
+eventpulse/
+├── CLAUDE.md                         ← THIS FILE
+├── .env.example                      ← template for Vercel env vars
+├── .gitignore
+├── package.json                      ← root: vite + react + react-query
+├── vite.config.js                    ← no base path (Vercel, not GitHub Pages)
+├── index.html
+├── src/
+│   ├── main.jsx                      ← QueryClientProvider wrapper
+│   ├── EventPulse.jsx                ← main app component (real API data)
+│   └── lib/
+│       └── supabase.js               ← Supabase JS client (VITE_ env vars)
+└── server/
+    ├── package.json                  ← ESM, Express, node-cron, etc.
+    ├── index.js                      ← Express app + cron
+    ├── .env.example
+    ├── .gitignore
+    ├── routes/
+    │   ├── events.js                 ← GET /api/events, GET /api/events/:id, POST /api/events/submit
+    │   ├── venues.js                 ← GET /api/venues, GET /api/venues/:id
+    │   └── admin.js                  ← protected: pending, approve, reject, sync
+    ├── middleware/
+    │   ├── auth.js                   ← x-admin-key header check
+    │   └── rateLimit.js              ← apiLimiter (200/15min), strictLimiter (20/min)
+    └── services/
+        ├── ticketmaster.js           ← Ticketmaster Discovery API fetcher
+        └── sync.js                   ← Supabase upsert orchestrator
+```
 
 ---
 
 ## 🔑 Environment Variables
 
-### Railway (Backend) — all 15 are set
+### Railway (Backend) — all set
 ```
 SUPABASE_URL=https://jrdfcngdggqanjgxohjk.supabase.co
-SUPABASE_SERVICE_KEY=[service role JWT — already in Railway]
+SUPABASE_SERVICE_KEY=[service role JWT — in Railway]
 TICKETMASTER_API_KEY=OTq1WeQGQGUDeVwf7Q3kCL5hyBTRxcKZ
 PORT=3001
-FRONTEND_URL=[set this once Vercel URL is known]
-ADMIN_PASSWORD=[auto-generated in Railway]
+FRONTEND_URL=https://eventpulse-ednedbs9o-wetmuds-projects.vercel.app
+ADMIN_PASSWORD=[in Railway — needed for x-admin-key header]
 BANDSINTOWN_APP_ID=[placeholder]
 MAPBOX_SECRET_TOKEN=[placeholder]
 STRIPE_SECRET_KEY=[placeholder]
@@ -109,11 +154,11 @@ SONGKICK_API_KEY=[placeholder]
 EVENTBRITE_API_KEY=[placeholder]
 ```
 
-### Vercel (Frontend) — NOT SET UP YET
+### Vercel (Frontend) — all set
 ```
-VITE_API_URL=https://[railway-domain].railway.app
+VITE_API_URL=https://eventpulse-production-0256.up.railway.app
 VITE_SUPABASE_URL=https://jrdfcngdggqanjgxohjk.supabase.co
-VITE_SUPABASE_ANON_KEY=[get from Supabase → Settings → API → anon public key]
+VITE_SUPABASE_ANON_KEY=[in Vercel]
 VITE_MAPBOX_TOKEN=[placeholder — needed for Phase 5]
 VITE_VAPID_PUBLIC_KEY=[placeholder — needed for Phase 7]
 VITE_STRIPE_PUBLIC_KEY=[placeholder — needed for Phase 8]
@@ -123,8 +168,6 @@ VITE_STRIPE_PUBLIC_KEY=[placeholder — needed for Phase 8]
 
 ## 🗄 Supabase Schema
 
-Schema to run in Supabase SQL Editor (copy from `EventPulse_Roadmap.md` Step 1.2):
-
 Tables: `venues`, `events`, `profiles`, `saved_events`, `follows`
 
 Key field notes:
@@ -132,57 +175,6 @@ Key field notes:
 - `events.is_verified` — only `true` events returned by `/api/events` GET
 - `events.source_id` — external API ID, used with `UNIQUE(source, source_id)` to prevent duplicates
 - `profiles.id` — references `auth.users(id)` from Supabase Auth
-
----
-
-## ✅ NEXT STEPS — Phase 2: Real APIs
-
-### 1. Build the Ticketmaster sync service
-Create two new files:
-- `/server/services/ticketmaster.js` — fetches + normalizes events from Ticketmaster Discovery API
-- `/server/services/sync.js` — orchestrates sources, upserts into Supabase, runs on cron
-
-The Ticketmaster API key is already in Railway: `OTq1WeQGQGUDeVwf7Q3kCL5hyBTRxcKZ`
-
-GTA query:
-```
-https://app.ticketmaster.com/discovery/v2/events.json
-  ?apikey=OTq1WeQGQGUDeVwf7Q3kCL5hyBTRxcKZ
-  &city=Toronto
-  &countryCode=CA
-  &radius=80
-  &unit=km
-  &size=200
-```
-
-Category mapping (Ticketmaster segment → our category):
-```js
-const CATEGORY_MAP = {
-  'Music': 'Concerts',
-  'Sports': 'Sports',
-  'Arts & Theatre': 'Theatre',
-  'Film': 'Other',
-  'Miscellaneous': 'Other',
-  'Comedy': 'Comedy',
-  'Family': 'Festivals',
-};
-```
-
-### 2. Add cron to server/index.js
-```js
-import cron from 'node-cron';
-import { syncAllSources } from './services/sync.js';
-cron.schedule('0 */6 * * *', () => syncAllSources());
-```
-
-### 3. Refactor EventPulse.jsx to use real data
-Install React Query: `npm install @tanstack/react-query`
-Replace seeded demo data with fetch from `${VITE_API_URL}/api/events?month=X&year=Y`
-
-### 4. Phase 2 sign-off
-- Trigger a manual sync via `POST /api/admin/sync` (with x-admin-key header)
-- Verify events appear in Supabase Table Editor
-- Verify frontend calendar shows real events
 
 ---
 
@@ -200,9 +192,11 @@ Replace seeded demo data with fetch from `${VITE_API_URL}/api/events?month=X&yea
 ## ⚠️ Known Issues / Gotchas
 
 - **`npm install` won't run in the Claude VM** — Railway runs it at deploy time. Don't try to test the server locally from the VM.
-- **GitHub Actions deploy.yml** exists at `.github/workflows/deploy.yml` — this was the old GitHub Pages deploy. It may need to be updated or disabled now that we're using Vercel.
-- **vite.config.js** no longer has `base: '/eventpulse/'` — the old GitHub Pages URL (`wetmud.github.io/eventpulse/`) will break. That's intentional — Vercel is the new home.
-- **CORS** is currently set to `*` (wildcard) until `FRONTEND_URL` is set in Railway.
+- **Claude VM proxy blocks GitHub** — `git push` and SSH to github.com both fail. Use github.dev (browser VS Code) to commit files manually.
+- **GitHub Actions deploy.yml** exists at `.github/workflows/deploy.yml` — old GitHub Pages deploy. May need to be disabled; Vercel handles deploys now.
+- **vite.config.js** no longer has `base: '/eventpulse/'` — old GitHub Pages URL will break. Intentional.
+- **`node-cron` must be in server/package.json** — confirm it's listed under dependencies before Railway deploys.
+- **Admin sync endpoint** requires `x-admin-key` header matching `ADMIN_PASSWORD` env var in Railway.
 
 ---
 
@@ -211,14 +205,70 @@ Replace seeded demo data with fetch from `${VITE_API_URL}/api/events?month=X&yea
 | Phase | Status | Notes |
 |-------|--------|-------|
 | 1 — Foundation | ✅ Complete | Railway + Vercel + Supabase all live |
-| 2 — Real APIs | 🟡 Up Next | Ticketmaster key ready, sync service to build |
-| 3 — User Accounts | ⬜ Not started | |
+| 2 — Real APIs | 🟡 Deploy pending | Code complete, needs sync trigger + verification |
+| 3 — User Accounts | ⬜ Not started | Supabase Auth + profiles |
 | 4 — User Submissions | ⬜ Not started | |
 | 5 — Map View | ⬜ Not started | Need Mapbox token |
-| 6 — Discovery Engine | ⬜ Not started | |
-| 7 — Mobile/PWA | ⬜ Not started | |
-| 8 — Monetization | ⬜ Not started | |
+| 6 — Discovery Engine | ⬜ Not started | Needs ANTHROPIC_API_KEY |
+| 7 — Mobile/PWA | ⬜ Not started | Needs VAPID keys |
+| 8 — Monetization | ⬜ Not started | Needs Stripe keys |
 
 ---
 
-*Last updated: March 6, 2026 — Phase 1 complete, starting Phase 2*
+## 🎨 UI Redesign — ✅ COMPLETE (March 14, 2026)
+
+Committed: `feat: full UI redesign — light theme, hero, two-column layout`
+
+**What shipped:**
+- Full light warm-beige theme (`#f0ebe3`) throughout
+- 100vh hero: nav + "Events, organized." headline + three category strips + venue poster image
+- Stats strip: event count · venues · categories · sources + hot date chips + category pills
+- Two-column main layout: sticky 380px calendar left, scrollable event list right
+- DateBubble modal removed — date click filters the right list
+- Discovery carousel removed — vertical event list replaces it
+- Responsive: stacks below 900px
+
+**Files changed:** `src/EventPulse.jsx`, `public/venues-poster.png`
+
+---
+
+## 🚀 Next Session Starting Point
+
+### Priority 1 — Review + polish the redesign
+Push to GitHub → Vercel auto-deploys. Then visually QA at:
+`https://eventpulse-ednedbs9o-wetmuds-projects.vercel.app`
+
+Things to check/polish next session:
+- Hero image sizing on various screen sizes
+- Calendar density colours on white — bump opacity if too faint
+- Empty state when no events load (Phase 2 backend may not be syncing yet)
+- `Sign in` button — wire up Supabase Auth (Phase 3)
+
+### Priority 2 — Fix Railway deploy (Phase 2 sign-off)
+Railway kept trying to run `vite build` from the wrong directory. Correct settings:
+- Root Directory: *(blank)*
+- Build Command: `cd server && npm install`
+- Start Command: `cd server && node index.js`
+
+Once Railway is green:
+1. Trigger manual sync: `POST https://eventpulse-production-0256.up.railway.app/api/admin/sync` with header `x-admin-key: [ADMIN_PASSWORD from Railway env vars]`
+2. Verify events appear in Supabase Table Editor → `events` table
+3. Verify frontend calendar shows real events
+
+### Priority 3 — Phase 3: User Accounts
+- Supabase Auth (email + Google OAuth)
+- Profile page
+- Persist liked/notified events to `saved_events` table
+- Show sign-in flow from the `Sign in` button in the hero nav
+
+### Other ideas for future sessions
+- **Search improvements** — debounce, clear button, highlight matching text
+- **Event detail page/drawer** — clicking an event card opens a full details view
+- **Share button** on event cards — Web Share API
+- **"Add to calendar"** button — generates `.ics` file
+- **Infinite scroll or pagination** on the event list (currently loads 500 at once)
+- **Skeleton loading state** for event list (already have `CalendarSkeleton`, add `EventListSkeleton`)
+
+---
+
+*Last updated: 2026-03-14 — UI redesign shipped; Railway Phase 2 still pending*
