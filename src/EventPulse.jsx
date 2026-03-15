@@ -364,7 +364,7 @@ export default function EventPulse() {
 
         {/* Hero body — two columns */}
         <div style={{
-          display: "flex", flex: 1, alignItems: "stretch",
+          display: "flex", flex: 1, alignItems: "flex-end",
           padding: isMobile ? "2rem 1.5rem 0" : "2rem 2.5rem 0",
           gap: "3rem", maxWidth: "1400px", width: "100%", margin: "0 auto",
           flexDirection: isMobile ? "column" : "row",
