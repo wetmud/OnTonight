@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback } from "react";
+import { useState, useRef, useCallback, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 
 const API_URL = import.meta.env.VITE_API_URL || "http://localhost:3001";
@@ -70,7 +70,6 @@ function normalizeApiEvent(raw, liked, notified) {
   const day = parseInt(raw.event_date?.split("-")[2] || "1", 10);
   const time = raw.start_time ? raw.start_time.substring(0, 5) : "";
   const source = capitalizeSource(raw.source);
-  // Deterministic fallback image based on id hash
   const imgIdx = raw.id ? raw.id.charCodeAt(0) % FALLBACK_IMAGES.length : 0;
 
   return {
@@ -96,11 +95,11 @@ function normalizeApiEvent(raw, liked, notified) {
 // ─── DENSITY HELPERS ─────────────────────────────────────────────────────────
 
 function getDensityStyle(count) {
-  if (count === 0) return { bg: "rgba(255,255,255,0.03)", dot: "#444", glow: "none", badge: "#444" };
-  if (count <= 2)  return { bg: "rgba(59,130,246,0.10)", dot: "#3b82f6", glow: "0 0 12px rgba(59,130,246,0.3)", badge: "#3b82f6" };
-  if (count <= 5)  return { bg: "rgba(139,92,246,0.12)", dot: "#8b5cf6", glow: "0 0 14px rgba(139,92,246,0.35)", badge: "#8b5cf6" };
-  if (count <= 10) return { bg: "rgba(249,115,22,0.14)", dot: "#f97316", glow: "0 0 18px rgba(249,115,22,0.4)", badge: "#f97316" };
-  return { bg: "rgba(239,68,68,0.18)", dot: "#ef4444", glow: "0 0 24px rgba(239,68,68,0.55)", badge: "#ef4444" };
+  if (count === 0) return { bg: "rgba(0,0,0,0.03)", dot: "#ccc", glow: "none", badge: "#ccc" };
+  if (count <= 2)  return { bg: "rgba(59,130,246,0.12)",  dot: "#3b82f6", glow: "none", badge: "#3b82f6" };
+  if (count <= 5)  return { bg: "rgba(139,92,246,0.15)", dot: "#8b5cf6", glow: "none", badge: "#8b5cf6" };
+  if (count <= 10) return { bg: "rgba(249,115,22,0.18)", dot: "#f97316", glow: "none", badge: "#f97316" };
+  return { bg: "rgba(239,68,68,0.22)", dot: "#ef4444", glow: "none", badge: "#ef4444" };
 }
 
 // ─── SUB-COMPONENTS ──────────────────────────────────────────────────────────
@@ -123,68 +122,58 @@ function CategoryDot({ category, size = 7 }) {
     <span style={{
       display: "inline-block", width: size, height: size, borderRadius: "50%",
       background: CAT_COLORS[category], flexShrink: 0,
-      boxShadow: `0 0 4px ${CAT_COLORS[category]}88`,
     }} />
   );
 }
 
-function EventCard({ event, onLike, onNotify, compact = false }) {
+function EventCard({ event, onLike, onNotify }) {
+  const catColor = CAT_COLORS[event.category] || "#6b7280";
   return (
     <div style={{
-      background: "rgba(255,255,255,0.04)",
-      border: "1px solid rgba(255,255,255,0.07)",
-      borderRadius: 12,
-      padding: compact ? "10px 12px" : "12px 14px",
-      display: "flex", gap: 10, alignItems: "flex-start",
-      transition: "background 0.2s",
-      cursor: "pointer",
-    }}
-      onMouseEnter={e => e.currentTarget.style.background = "rgba(255,255,255,0.07)"}
-      onMouseLeave={e => e.currentTarget.style.background = "rgba(255,255,255,0.04)"}
-    >
-      {!compact && (
-        <img src={event.image} alt="" style={{
-          width: 52, height: 52, borderRadius: 8, objectFit: "cover", flexShrink: 0,
-        }} onError={e => { e.target.src = FALLBACK_IMAGES[0]; }} />
-      )}
+      background: "#ffffff",
+      borderRadius: 10,
+      boxShadow: "0 1px 6px rgba(0,0,0,0.07)",
+      border: "1px solid #e5ddd4",
+      borderLeft: `4px solid ${catColor}`,
+      padding: "0.85rem 1rem",
+      display: "flex",
+      gap: "0.75rem",
+      alignItems: "flex-start",
+    }}>
       <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap", marginBottom: 2 }}>
-          <span style={{ fontSize: 11, fontWeight: 700, color: CAT_COLORS[event.category] }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 3 }}>
+          <span style={{ fontSize: 11, fontWeight: 700, color: catColor }}>
             {CAT_ICONS[event.category]} {event.category}
           </span>
           <SourceBadge source={event.source} />
         </div>
-        <div style={{ fontSize: compact ? 12 : 13, fontWeight: 700, color: "#fff", marginBottom: 3, lineHeight: 1.3 }}>
+        <div style={{ fontSize: 13, fontWeight: 700, color: "#1a1a1a", lineHeight: 1.3, marginBottom: 4 }}>
           {event.title}
         </div>
-        <div style={{ fontSize: 11, color: "#9ca3af", display: "flex", gap: 8, flexWrap: "wrap" }}>
+        <div style={{ fontSize: 11, color: "#6b6055", display: "flex", gap: 8, flexWrap: "wrap" }}>
           {event.time && <span>🕐 {event.time}</span>}
           <span>📍 {event.venue}</span>
-          {event.priceMin != null && <span style={{ color: "#34d399" }}>${event.priceMin}–${event.priceMax}</span>}
+          {event.priceMin != null && <span style={{ color: "#16a34a", fontWeight: 600 }}>${event.priceMin}–${event.priceMax}</span>}
         </div>
       </div>
-      <div style={{ display: "flex", flexDirection: "column", gap: 4, alignItems: "center" }}>
+      <div style={{ display: "flex", flexDirection: "column", gap: 4, alignItems: "center", flexShrink: 0 }}>
         <button
           onClick={e => { e.stopPropagation(); onLike(event.id); }}
           style={{
-            background: event.liked ? "rgba(239,68,68,0.2)" : "rgba(255,255,255,0.06)",
-            border: `1px solid ${event.liked ? "#ef4444" : "rgba(255,255,255,0.1)"}`,
+            background: event.liked ? "#fff0f0" : "#f9f7f4",
+            border: `1px solid ${event.liked ? "#fca5a5" : "#e5ddd4"}`,
             borderRadius: 8, width: 30, height: 30, cursor: "pointer",
-            display: "flex", alignItems: "center", justifyContent: "center",
-            fontSize: 14, transition: "all 0.2s",
+            display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14,
           }}
-          title="Like"
         >{event.liked ? "❤️" : "🤍"}</button>
         <button
           onClick={e => { e.stopPropagation(); onNotify(event.id); }}
           style={{
-            background: event.notified ? "rgba(250,204,21,0.2)" : "rgba(255,255,255,0.06)",
-            border: `1px solid ${event.notified ? "#facc15" : "rgba(255,255,255,0.1)"}`,
+            background: event.notified ? "#fffbeb" : "#f9f7f4",
+            border: `1px solid ${event.notified ? "#fcd34d" : "#e5ddd4"}`,
             borderRadius: 8, width: 30, height: 30, cursor: "pointer",
-            display: "flex", alignItems: "center", justifyContent: "center",
-            fontSize: 14, transition: "all 0.2s",
+            display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14,
           }}
-          title="Notify me"
         >{event.notified ? "🔔" : "🔕"}</button>
         <a
           href={event.ticketUrl}
@@ -192,203 +181,12 @@ function EventCard({ event, onLike, onNotify, compact = false }) {
           rel="noopener noreferrer"
           onClick={e => e.stopPropagation()}
           style={{
-            background: "linear-gradient(135deg,#6366f1,#8b5cf6)",
+            background: "#7c3aed",
             color: "#fff", fontSize: 9, fontWeight: 700,
             padding: "4px 7px", borderRadius: 6, textDecoration: "none",
             letterSpacing: "0.04em",
           }}
         >BUY</a>
-      </div>
-    </div>
-  );
-}
-
-// ─── DATE BUBBLE (grows out of cell) ─────────────────────────────────────────
-
-function DateBubble({ day, month, year, events, anchor, onClose, onLike, onNotify }) {
-  const ref = useRef(null);
-  const [visible, setVisible] = useState(false);
-  const [filter, setFilter] = useState("All");
-
-  useState(() => {
-    requestAnimationFrame(() => requestAnimationFrame(() => setVisible(true)));
-    const onKey = e => { if (e.key === "Escape") onClose(); };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  });
-
-  const grouped = {};
-  CATEGORIES.forEach(c => { grouped[c] = events.filter(e => e.category === c); });
-  const cats = CATEGORIES.filter(c => grouped[c].length > 0);
-  const filtered = filter === "All" ? events : events.filter(e => e.category === filter);
-
-  if (!anchor) return null;
-
-  const vw = window.innerWidth;
-  const vh = window.innerHeight;
-  const anchorCx = anchor.left + anchor.width / 2;
-  const anchorCy = anchor.top + anchor.height / 2;
-  const bw = Math.min(420, vw - 32);
-  const bh = Math.min(560, vh - 40);
-  let left = anchorCx - bw / 2;
-  let top = anchorCy - bh / 2;
-  if (left < 8) left = 8;
-  if (left + bw > vw - 8) left = vw - bw - 8;
-  if (top < 8) top = 8;
-  if (top + bh > vh - 8) top = vh - bh - 8;
-  const originX = anchorCx - left;
-  const originY = anchorCy - top;
-
-  const dateLabel = new Date(year, month - 1, day)
-    .toLocaleDateString("en-CA", { weekday: "long", month: "long", day: "numeric" });
-
-  return (
-    <>
-      <div
-        onClick={onClose}
-        style={{
-          position: "fixed", inset: 0, zIndex: 1000,
-          background: "rgba(0,0,0,0.55)", backdropFilter: "blur(4px)",
-          opacity: visible ? 1 : 0, transition: "opacity 0.3s ease",
-        }}
-      />
-      <div
-        ref={ref}
-        style={{
-          position: "fixed", left, top,
-          width: bw, height: bh, zIndex: 1001,
-          background: "linear-gradient(160deg, #13131f 0%, #0d0d1a 100%)",
-          border: "1.5px solid rgba(139,92,246,0.35)",
-          borderRadius: 20,
-          boxShadow: "0 32px 80px rgba(0,0,0,0.7), 0 0 40px rgba(139,92,246,0.15)",
-          display: "flex", flexDirection: "column",
-          transformOrigin: `${originX}px ${originY}px`,
-          transform: visible ? "scale(1)" : "scale(0.15)",
-          opacity: visible ? 1 : 0,
-          transition: "transform 0.42s cubic-bezier(0.34,1.56,0.64,1), opacity 0.3s ease",
-          overflow: "hidden",
-        }}
-      >
-        <div style={{
-          padding: "16px 18px 12px",
-          background: "linear-gradient(180deg, rgba(139,92,246,0.12) 0%, transparent 100%)",
-          borderBottom: "1px solid rgba(255,255,255,0.07)",
-          flexShrink: 0,
-        }}>
-          <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between" }}>
-            <div>
-              <div style={{ fontSize: 22, fontWeight: 800, color: "#fff", letterSpacing: "-0.02em" }}>
-                {dateLabel}
-              </div>
-              <div style={{ fontSize: 13, color: "#8b5cf6", fontWeight: 600, marginTop: 2 }}>
-                {events.length} event{events.length !== 1 ? "s" : ""}
-              </div>
-            </div>
-            <button onClick={onClose} style={{
-              background: "rgba(255,255,255,0.07)", border: "none",
-              color: "#9ca3af", borderRadius: 10, width: 32, height: 32,
-              cursor: "pointer", fontSize: 16, display: "flex", alignItems: "center", justifyContent: "center",
-            }}>✕</button>
-          </div>
-          <div style={{ display: "flex", gap: 6, marginTop: 12, flexWrap: "wrap" }}>
-            {["All", ...cats].map(c => (
-              <button key={c} onClick={() => setFilter(c)} style={{
-                fontSize: 11, fontWeight: 700, padding: "4px 10px", borderRadius: 20, cursor: "pointer",
-                background: filter === c ? (c === "All" ? "#8b5cf6" : CAT_COLORS[c]) : "rgba(255,255,255,0.07)",
-                color: filter === c ? "#fff" : "#9ca3af",
-                border: `1px solid ${filter === c ? "transparent" : "rgba(255,255,255,0.1)"}`,
-                transition: "all 0.18s",
-              }}>
-                {c === "All" ? "All" : `${CAT_ICONS[c]} ${c}`}
-                {c !== "All" && <span style={{ marginLeft: 4, opacity: 0.7 }}>({grouped[c]?.length})</span>}
-              </button>
-            ))}
-          </div>
-        </div>
-        <div style={{ flex: 1, overflowY: "auto", padding: "12px 14px", display: "flex", flexDirection: "column", gap: 8 }}>
-          {filtered.length === 0 && (
-            <div style={{ textAlign: "center", color: "#4b5563", paddingTop: 40, fontSize: 14 }}>No events in this category</div>
-          )}
-          {filtered.map(ev => (
-            <EventCard key={ev.id} event={ev} onLike={onLike} onNotify={onNotify} />
-          ))}
-        </div>
-      </div>
-    </>
-  );
-}
-
-// ─── DISCOVER CARD ────────────────────────────────────────────────────────────
-
-function DiscoverCard({ event, onLike, onNotify }) {
-  const dateLabel = event.date
-    ? new Date(event.date + "T12:00:00").toLocaleDateString("en-CA", { month: "short", day: "numeric" })
-    : "";
-
-  return (
-    <div style={{
-      background: "linear-gradient(160deg, #15151f, #0f0f1a)",
-      border: "1px solid rgba(255,255,255,0.08)",
-      borderRadius: 16,
-      overflow: "hidden",
-      flexShrink: 0,
-      width: 280,
-      transition: "transform 0.2s, box-shadow 0.2s",
-      cursor: "pointer",
-    }}
-      onMouseEnter={e => { e.currentTarget.style.transform = "translateY(-3px)"; e.currentTarget.style.boxShadow = `0 16px 40px rgba(0,0,0,0.5), 0 0 20px ${CAT_COLORS[event.category]}22`; }}
-      onMouseLeave={e => { e.currentTarget.style.transform = "translateY(0)"; e.currentTarget.style.boxShadow = "none"; }}
-    >
-      <div style={{ position: "relative" }}>
-        <img
-          src={event.image}
-          alt=""
-          style={{ width: "100%", height: 150, objectFit: "cover", display: "block" }}
-          onError={e => { e.target.src = FALLBACK_IMAGES[0]; }}
-        />
-        <div style={{
-          position: "absolute", inset: 0,
-          background: "linear-gradient(to top, rgba(15,15,26,1) 0%, transparent 55%)",
-        }} />
-        <div style={{ position: "absolute", top: 10, left: 10 }}>
-          <span style={{
-            fontSize: 10, fontWeight: 800, letterSpacing: "0.06em",
-            padding: "3px 8px", borderRadius: 20,
-            background: CAT_COLORS[event.category] + "cc",
-            color: "#fff",
-          }}>{CAT_ICONS[event.category]} {event.category}</span>
-        </div>
-        <div style={{ position: "absolute", top: 10, right: 10, display: "flex", gap: 4 }}>
-          <button onClick={() => onLike(event.id)} style={{
-            background: event.liked ? "rgba(239,68,68,0.8)" : "rgba(0,0,0,0.6)",
-            border: "none", borderRadius: 8, width: 28, height: 28,
-            cursor: "pointer", fontSize: 13, display: "flex", alignItems: "center", justifyContent: "center",
-          }}>{event.liked ? "❤️" : "🤍"}</button>
-          <button onClick={() => onNotify(event.id)} style={{
-            background: event.notified ? "rgba(250,204,21,0.8)" : "rgba(0,0,0,0.6)",
-            border: "none", borderRadius: 8, width: 28, height: 28,
-            cursor: "pointer", fontSize: 13, display: "flex", alignItems: "center", justifyContent: "center",
-          }}>{event.notified ? "🔔" : "🔕"}</button>
-        </div>
-      </div>
-      <div style={{ padding: "12px 14px 14px" }}>
-        <div style={{ fontSize: 14, fontWeight: 800, color: "#fff", marginBottom: 4, lineHeight: 1.3 }}>{event.title}</div>
-        <div style={{ fontSize: 11, color: "#6b7280", marginBottom: 8 }}>
-          📅 {dateLabel}{event.time && ` · ${event.time}`} · 📍 {event.venue}
-        </div>
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-          <div style={{ display: "flex", gap: 5, alignItems: "center" }}>
-            <SourceBadge source={event.source} />
-            {event.priceMin != null && (
-              <span style={{ fontSize: 11, color: "#34d399", fontWeight: 700 }}>${event.priceMin}–${event.priceMax}</span>
-            )}
-          </div>
-          <a href={event.ticketUrl} target="_blank" rel="noopener noreferrer" style={{
-            background: "linear-gradient(135deg,#6366f1,#8b5cf6)",
-            color: "#fff", fontSize: 10, fontWeight: 700,
-            padding: "5px 12px", borderRadius: 8, textDecoration: "none",
-          }}>Get Tickets</a>
-        </div>
       </div>
     </div>
   );
@@ -401,9 +199,9 @@ function CalendarSkeleton() {
     <div style={{ display: "grid", gridTemplateColumns: "repeat(7,1fr)", gap: 4 }}>
       {Array.from({ length: 35 }, (_, i) => (
         <div key={i} style={{
-          background: "rgba(255,255,255,0.03)",
-          border: "1px solid rgba(255,255,255,0.04)",
-          borderRadius: 10, minHeight: 70,
+          background: "rgba(0,0,0,0.04)",
+          border: "1px solid rgba(0,0,0,0.05)",
+          borderRadius: 8, minHeight: 58,
           animation: "pulse 1.5s ease-in-out infinite",
         }} />
       ))}
@@ -420,12 +218,17 @@ export default function EventPulse() {
   const [liked, setLiked] = useState(new Set());
   const [notified, setNotified] = useState(new Set());
   const [selectedDay, setSelectedDay] = useState(null);
-  const [bubbleAnchor, setBubbleAnchor] = useState(null);
   const [search, setSearch] = useState("");
   const [catFilter, setCatFilter] = useState("All");
   const [toast, setToast] = useState(null);
-  const [discoverKey, setDiscoverKey] = useState(0);
-  const discoverRef = useRef(null);
+
+  const [windowWidth, setWindowWidth] = useState(typeof window !== "undefined" ? window.innerWidth : 1200);
+  useEffect(() => {
+    const handler = () => setWindowWidth(window.innerWidth);
+    window.addEventListener("resize", handler);
+    return () => window.removeEventListener("resize", handler);
+  }, []);
+  const isMobile = windowWidth < 900;
 
   const { data: apiData, isLoading, isError, isFetching, refetch, dataUpdatedAt } = useQuery({
     queryKey: ["events", year, month],
@@ -436,25 +239,22 @@ export default function EventPulse() {
     },
   });
 
-  // Normalize API events to UI shape, injecting liked/notified state
   const allEvents = (apiData?.events || []).map(e => normalizeApiEvent(e, liked, notified));
 
-  // Filtered by search and category
   const filteredEvents = allEvents.filter(e => {
     const matchSearch = !search ||
       e.title.toLowerCase().includes(search.toLowerCase()) ||
       e.venue.toLowerCase().includes(search.toLowerCase()) ||
       e.artist.toLowerCase().includes(search.toLowerCase());
     const matchCat = catFilter === "All" || e.category === catFilter;
-    return matchSearch && matchCat;
+    const matchDay = !selectedDay || e.day === selectedDay;
+    return matchSearch && matchCat && matchDay;
   });
 
-  const eventsForDay = (day) => filteredEvents.filter(e => e.day === day);
+  const eventsForDay = (day) => allEvents.filter(e => e.day === day);
 
-  // Month navigation
   const navigateMonth = (dir) => {
     setSelectedDay(null);
-    setBubbleAnchor(null);
     setMonth(prev => {
       let m = prev + dir;
       if (m < 1) { setYear(y => y - 1); return 12; }
@@ -467,7 +267,6 @@ export default function EventPulse() {
     setMonth(now.getMonth() + 1);
     setYear(now.getFullYear());
     setSelectedDay(null);
-    setBubbleAnchor(null);
   };
 
   const showToast = useCallback((msg) => {
@@ -503,21 +302,11 @@ export default function EventPulse() {
     });
   }, [allEvents, showToast]);
 
-  const handleDayClick = (day, cellEl) => {
-    const rect = cellEl.getBoundingClientRect();
-    setSelectedDay(day);
-    setBubbleAnchor({ left: rect.left, top: rect.top, width: rect.width, height: rect.height });
-  };
-
   const handleSync = () => {
     refetch();
     showToast("⟳ Refreshing events…");
   };
 
-  // Stats
-  const monthEvents = filteredEvents.length;
-  const activeDays = new Set(filteredEvents.map(e => e.day)).size;
-  const avgPerDay = activeDays > 0 ? (monthEvents / activeDays).toFixed(1) : "0";
   const daysInMonth = new Date(year, month, 0).getDate();
 
   const hotDays = Array.from({ length: daysInMonth }, (_, i) => i + 1)
@@ -525,135 +314,221 @@ export default function EventPulse() {
     .filter(x => x.c > 0)
     .sort((a, b) => b.c - a.c)
     .slice(0, 6);
-  const busiest = hotDays[0];
 
   const catCounts = {};
-  CATEGORIES.forEach(c => { catCounts[c] = filteredEvents.filter(e => e.category === c).length; });
-  const topCat = Object.entries(catCounts).sort((a, b) => b[1] - a[1])[0];
+  CATEGORIES.forEach(c => { catCounts[c] = allEvents.filter(e => e.category === c).length; });
 
-  // Discover: shuffle on discoverKey change
-  const discoverEvents = [...filteredEvents]
-    .sort((a, b) => (a.id + discoverKey > b.id + discoverKey ? 1 : -1))
-    .slice(0, 20);
-
-  // Calendar grid
   const firstDay = new Date(year, month - 1, 1).getDay();
   const days = Array.from({ length: daysInMonth }, (_, i) => i + 1);
   const paddingBefore = Array.from({ length: firstDay }, () => null);
   const isCurrentMonth = now.getFullYear() === year && now.getMonth() + 1 === month;
   const todayDay = now.getDate();
 
-  // Last sync label
   const syncedLabel = dataUpdatedAt
     ? new Date(dataUpdatedAt).toLocaleTimeString("en-CA", { hour: "2-digit", minute: "2-digit" })
     : "—";
 
   return (
-    <div style={{
-      fontFamily: "'Inter', system-ui, sans-serif",
-      background: "#0a0a12",
-      minHeight: "100vh",
-      color: "#fff",
-      overflowX: "hidden",
-    }}>
-      {/* TOAST */}
+    <div style={{ fontFamily: "'Inter', 'Helvetica Neue', Arial, sans-serif", background: "#f0ebe3", minHeight: "100vh", color: "#1a1a1a", overflowX: "hidden" }}>
+
+      {/* Toast */}
       {toast && (
         <div style={{
           position: "fixed", top: 20, left: "50%", transform: "translateX(-50%)",
-          background: "rgba(139,92,246,0.95)", color: "#fff",
+          background: "rgba(26,26,26,0.92)", color: "#fff",
           padding: "10px 20px", borderRadius: 30,
           fontSize: 13, fontWeight: 700, zIndex: 9999,
-          boxShadow: "0 8px 32px rgba(139,92,246,0.5)",
+          boxShadow: "0 8px 32px rgba(0,0,0,0.25)",
           animation: "fadeIn 0.2s ease",
           whiteSpace: "nowrap",
         }}>{toast}</div>
       )}
 
-      {/* HEADER */}
-      <header style={{
-        padding: "14px 24px",
-        borderBottom: "1px solid rgba(255,255,255,0.07)",
-        display: "flex", alignItems: "center", gap: 16, flexWrap: "wrap",
-        background: "rgba(10,10,18,0.95)",
-        position: "sticky", top: 0, zIndex: 100,
-        backdropFilter: "blur(12px)",
-      }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 10, marginRight: "auto" }}>
-          <div style={{
-            width: 38, height: 38, borderRadius: 11,
-            background: "linear-gradient(135deg,#6366f1,#8b5cf6)",
-            display: "flex", alignItems: "center", justifyContent: "center",
-            fontSize: 18, boxShadow: "0 4px 16px rgba(139,92,246,0.4)",
-          }}>⚡</div>
-          <div>
-            <div style={{ fontSize: 17, fontWeight: 900, letterSpacing: "-0.02em" }}>
-              <span style={{ color: "#fff" }}>Event</span>
-              <span style={{ color: "#8b5cf6" }}>Pulse</span>
-              <span style={{ fontSize: 11, fontWeight: 700, color: "#6b7280", marginLeft: 6 }}>GTA</span>
+      {/* HERO — 100vh */}
+      <div id="hero" style={{ minHeight: "100vh", background: "#f0ebe3", display: "flex", flexDirection: "column" }}>
+
+        {/* Nav */}
+        <nav style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "1.25rem 2.5rem" }}>
+          <div style={{ fontSize: 15, fontWeight: 900, letterSpacing: "-0.02em", color: "#1a1a1a" }}>
+            <span>Event</span><span style={{ color: "#7c3aed" }}>Pulse</span>
+            <span style={{ fontSize: 11, fontWeight: 600, color: "#9c8e82", marginLeft: 6, letterSpacing: "0.04em" }}>· GTA</span>
+          </div>
+          <div style={{ display: "flex", gap: "1.5rem", alignItems: "center" }}>
+            <a href="#app" style={{ fontSize: 13, fontWeight: 600, color: "#6b6055", textDecoration: "none" }}>How it works</a>
+            <button style={{
+              background: "#1a1a1a", color: "#fff", border: "none",
+              borderRadius: 8, padding: "8px 18px", fontSize: 13, fontWeight: 700, cursor: "pointer",
+            }}>Sign in</button>
+          </div>
+        </nav>
+
+        {/* Hero body — two columns */}
+        <div style={{
+          display: "flex", flex: 1, alignItems: "stretch",
+          padding: isMobile ? "2rem 1.5rem 0" : "2rem 2.5rem 0",
+          gap: "3rem", maxWidth: "1400px", width: "100%", margin: "0 auto",
+          flexDirection: isMobile ? "column" : "row",
+        }}>
+
+          {/* Left: editorial */}
+          <div style={{ flex: "0 0 55%", display: "flex", flexDirection: "column", justifyContent: "center", paddingBottom: "3rem" }}>
+            <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.12em", color: "#9c8e82", textTransform: "uppercase", marginBottom: "1.25rem" }}>
+              EVENTPULSE · GTA
             </div>
-            <div style={{ fontSize: 10, color: "#4b5563", marginTop: -1 }}>Toronto · Hamilton · Golden Horseshoe</div>
+
+            <h1 style={{
+              fontSize: "clamp(4rem, 8vw, 8.5rem)",
+              fontWeight: 900,
+              lineHeight: 0.93,
+              letterSpacing: "-0.04em",
+              color: "#1a1a1a",
+              margin: "0 0 1.5rem 0",
+              whiteSpace: "pre-line",
+            }}>{"Events,\norganized."}</h1>
+
+            <p style={{ fontSize: "1.1rem", color: "#6b6055", margin: "0 0 2rem 0", lineHeight: 1.5 }}>
+              Every GTA concert, festival, and show. One calendar.
+            </p>
+
+            {/* Three coloured strips */}
+            <div style={{ display: "flex", flexDirection: "column", gap: 3, marginBottom: "2.5rem" }}>
+              {[
+                { color: "#7c3aed", label: "Concerts", sub: "847 shows this month" },
+                { color: "#ea580c", label: "Festivals & Outdoor", sub: "Across 28 GTA venues" },
+                { color: "#0369a1", label: "Theatre · Comedy · Sports", sub: "Updated daily from live sources" },
+              ].map(strip => (
+                <div key={strip.label} style={{
+                  background: strip.color,
+                  height: 66,
+                  borderRadius: 6,
+                  display: "flex",
+                  alignItems: "center",
+                  padding: "0 1.25rem",
+                  justifyContent: "space-between",
+                }}>
+                  <span style={{ fontSize: 14, fontWeight: 800, color: "#fff", letterSpacing: "-0.01em" }}>{strip.label}</span>
+                  <span style={{ fontSize: 11, color: "rgba(255,255,255,0.75)", fontWeight: 500 }}>{strip.sub}</span>
+                </div>
+              ))}
+            </div>
+
+            {/* Scroll CTA */}
+            <a href="#app" style={{
+              fontSize: 13, fontWeight: 700, color: "#6b6055",
+              textDecoration: "none", display: "inline-flex", alignItems: "center", gap: 6,
+              animation: "bounceDown 1.8s ease-in-out infinite",
+            }}>↓ Browse events</a>
+          </div>
+
+          {/* Right: poster image */}
+          {!isMobile && (
+            <div style={{ flex: "0 0 42%", display: "flex", alignItems: "flex-end", justifyContent: "center", paddingBottom: 0 }}>
+              <img
+                src="/venues-poster.png"
+                alt="GTA venues"
+                style={{
+                  width: "100%", maxWidth: "420px", maxHeight: "85vh",
+                  objectFit: "cover", objectPosition: "top",
+                  borderRadius: "8px",
+                  border: "3px solid #e8e0d4",
+                  boxShadow: "0 12px 48px rgba(0,0,0,0.18)",
+                  display: "block",
+                }}
+              />
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* STATS STRIP */}
+      <div style={{ background: "#e8e0d4", borderTop: "1px solid #d4ccc4", borderBottom: "1px solid #d4ccc4", padding: "1.25rem 2.5rem" }}>
+
+        {/* Counters row */}
+        <div style={{ display: "flex", gap: "2rem", flexWrap: "wrap", alignItems: "center", marginBottom: "1rem" }}>
+          {[
+            { val: isLoading ? "…" : filteredEvents.length, label: "Events this month" },
+            { val: "28", label: "Venues" },
+            { val: "6", label: "Categories" },
+            { val: "4", label: "Live sources" },
+          ].map(s => (
+            <div key={s.label} style={{ display: "flex", flexDirection: "column" }}>
+              <span style={{ fontSize: 22, fontWeight: 900, letterSpacing: "-0.03em", color: "#1a1a1a" }}>{s.val}</span>
+              <span style={{ fontSize: 11, color: "#6b6055", fontWeight: 500 }}>{s.label}</span>
+            </div>
+          ))}
+
+          <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: "#6b6055" }}>
+            <span style={{
+              width: 6, height: 6, borderRadius: "50%",
+              background: isError ? "#ef4444" : "#22c55e",
+              display: "inline-block",
+            }} />
+            {isError ? "Error loading events" : `Synced ${syncedLabel}`}
           </div>
         </div>
 
-        <div style={{ position: "relative", flex: "1 1 220px", maxWidth: 360 }}>
-          <span style={{ position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)", fontSize: 13, opacity: 0.4 }}>🔍</span>
-          <input
-            value={search}
-            onChange={e => setSearch(e.target.value)}
-            placeholder="Artists, venues, cities..."
-            style={{
-              width: "100%", boxSizing: "border-box",
-              background: "rgba(255,255,255,0.06)",
-              border: "1px solid rgba(255,255,255,0.1)",
-              borderRadius: 10, color: "#fff",
-              padding: "8px 12px 8px 34px",
-              fontSize: 13, outline: "none",
-            }}
-          />
-        </div>
+        <div style={{ height: 1, background: "#d4ccc4", marginBottom: "1rem" }} />
 
-        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-          <button style={{
-            background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.1)",
-            color: "#9ca3af", borderRadius: 10, padding: "8px 14px",
-            fontSize: 12, fontWeight: 700, cursor: "pointer", display: "flex", alignItems: "center", gap: 6,
-          }}>⚙️ Filters</button>
+        {/* Hot dates chips */}
+        {hotDays.length > 0 && (
+          <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginBottom: "0.75rem" }}>
+            <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.08em", color: "#9c8e82" }}>🔥 HOT DATES</span>
+            {hotDays.map(({ d, c }) => {
+              const ds = getDensityStyle(c);
+              const dateLabel = new Date(year, month - 1, d).toLocaleDateString("en-CA", { month: "short", day: "numeric" });
+              const isSelected = selectedDay === d;
+              return (
+                <button
+                  key={d}
+                  onClick={() => setSelectedDay(d === selectedDay ? null : d)}
+                  style={{
+                    background: isSelected ? ds.badge : "#fff",
+                    border: `1px solid ${isSelected ? ds.badge : "#d4ccc4"}`,
+                    borderRadius: 20, padding: "4px 10px",
+                    fontSize: 11, fontWeight: 700, cursor: "pointer",
+                    color: isSelected ? "#fff" : "#1a1a1a",
+                    display: "flex", alignItems: "center", gap: 5,
+                  }}
+                >
+                  {dateLabel}
+                  <span style={{
+                    background: isSelected ? "rgba(255,255,255,0.3)" : ds.badge,
+                    color: isSelected ? "#fff" : "#fff",
+                    borderRadius: 10, padding: "0px 5px", fontSize: 10, fontWeight: 800,
+                  }}>{c}</span>
+                </button>
+              );
+            })}
+          </div>
+        )}
+
+        {/* Category breakdown pills */}
+        <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+          <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.08em", color: "#9c8e82" }}>CATEGORIES</span>
           <button
-            onClick={handleSync}
+            onClick={() => setCatFilter("All")}
             style={{
-              background: isFetching ? "rgba(139,92,246,0.3)" : "linear-gradient(135deg,#6366f1,#8b5cf6)",
-              border: "none", borderRadius: 10, padding: "8px 16px",
-              color: "#fff", fontSize: 12, fontWeight: 700, cursor: "pointer",
-              display: "flex", alignItems: "center", gap: 6,
-              boxShadow: "0 4px 16px rgba(139,92,246,0.3)",
-              transition: "all 0.2s",
+              background: catFilter === "All" ? "#1a1a1a" : "#fff",
+              color: catFilter === "All" ? "#fff" : "#1a1a1a",
+              border: "1px solid #d4ccc4",
+              borderRadius: 20, padding: "4px 12px",
+              fontSize: 11, fontWeight: 700, cursor: "pointer",
             }}
-          >
-            <span style={{ display: "inline-block", animation: isFetching ? "spin 0.8s linear infinite" : "none" }}>⟳</span>
-            {isFetching ? "Loading…" : "Refresh"}
-          </button>
-        </div>
-      </header>
-
-      {/* LIVE STATUS */}
-      <div style={{ padding: "8px 24px", borderBottom: "1px solid rgba(255,255,255,0.04)", display: "flex", alignItems: "center", gap: 16, flexWrap: "wrap" }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: "#6b7280" }}>
-          <span style={{
-            width: 6, height: 6, borderRadius: "50%",
-            background: isError ? "#ef4444" : "#22c55e",
-            display: "inline-block",
-            boxShadow: isError ? "0 0 6px #ef4444" : "0 0 6px #22c55e",
-          }} />
-          {isError ? "Error loading events" : `Live · synced ${syncedLabel}`}
-          <span style={{ margin: "0 4px" }}>·</span>
-          📍 <b style={{ color: "#f97316" }}>80 km</b> radius
-        </div>
-        <div style={{ marginLeft: "auto", display: "flex", gap: 12, flexWrap: "wrap" }}>
-          {SOURCES.map(s => (
-            <div key={s} style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 10, color: "#6b7280" }}>
-              <span style={{ width: 6, height: 6, borderRadius: "50%", background: SOURCE_COLORS[s] }} />
-              {s}
-            </div>
+          >All</button>
+          {CATEGORIES.filter(c => catCounts[c] > 0).map(c => (
+            <button
+              key={c}
+              onClick={() => setCatFilter(c === catFilter ? "All" : c)}
+              style={{
+                background: catFilter === c ? CAT_COLORS[c] : "#fff",
+                color: catFilter === c ? "#fff" : "#1a1a1a",
+                border: `1px solid ${catFilter === c ? CAT_COLORS[c] : "#d4ccc4"}`,
+                borderRadius: 20, padding: "4px 12px",
+                fontSize: 11, fontWeight: 700, cursor: "pointer",
+              }}
+            >
+              {CAT_ICONS[c]} {c} <span style={{ opacity: 0.7, fontSize: 10 }}>({catCounts[c]})</span>
+            </button>
           ))}
         </div>
       </div>
@@ -661,284 +536,273 @@ export default function EventPulse() {
       {/* ERROR BANNER */}
       {isError && (
         <div style={{
-          margin: "12px 24px", padding: "12px 16px",
-          background: "rgba(239,68,68,0.12)", border: "1px solid rgba(239,68,68,0.3)",
-          borderRadius: 10, fontSize: 13, color: "#fca5a5",
+          margin: "12px 2.5rem", padding: "12px 16px",
+          background: "rgba(239,68,68,0.08)", border: "1px solid rgba(239,68,68,0.25)",
+          borderRadius: 10, fontSize: 13, color: "#b91c1c",
           display: "flex", alignItems: "center", gap: 8,
         }}>
-          ⚠️ Could not load events from the API. Check that the backend is running and the sync has been triggered.
+          ⚠️ Could not load events from the API. Check that the backend is running.
           <button onClick={() => refetch()} style={{
-            marginLeft: "auto", background: "rgba(239,68,68,0.2)",
-            border: "1px solid rgba(239,68,68,0.4)", color: "#fca5a5",
+            marginLeft: "auto", background: "rgba(239,68,68,0.1)",
+            border: "1px solid rgba(239,68,68,0.3)", color: "#b91c1c",
             borderRadius: 8, padding: "4px 12px", fontSize: 12, cursor: "pointer",
           }}>Retry</button>
         </div>
       )}
 
-      {/* STATS */}
-      <div style={{ padding: "14px 24px", display: "flex", gap: 12, flexWrap: "wrap" }}>
-        {[
-          { icon: "📊", val: isLoading ? "…" : monthEvents, label: "Events / Month", color: "#38bdf8" },
-          { icon: "📈", val: isLoading ? "…" : avgPerDay, label: "Avg / Active Day", color: "#818cf8" },
-          { icon: "🔥", val: isLoading ? "…" : busiest ? `${MONTH_NAMES[month-1].slice(0,3)} ${busiest.d} (${busiest.c})` : "—", label: "Busiest Day", color: "#fb923c" },
-          { icon: "✨", val: isLoading ? "…" : topCat?.[0] || "—", label: "Top Category", color: "#34d399" },
-          { icon: "📍", val: isLoading ? "…" : new Set(filteredEvents.map(e => e.venue)).size, label: "Venues In Range", color: "#f472b6" },
-          { icon: "⚡", val: isLoading ? "…" : new Set(filteredEvents.map(e => e.source)).size + " Live", label: "API Sources", color: "#facc15" },
-        ].map(s => (
-          <div key={s.label} style={{
-            background: "rgba(255,255,255,0.04)",
-            border: "1px solid rgba(255,255,255,0.07)",
-            borderRadius: 14, padding: "12px 18px", flex: "1 1 130px",
-          }}>
-            <div style={{ fontSize: 18, marginBottom: 4 }}>{s.icon}</div>
-            <div style={{ fontSize: 20, fontWeight: 900, color: s.color, letterSpacing: "-0.02em" }}>{s.val}</div>
-            <div style={{ fontSize: 11, color: "#4b5563", marginTop: 2 }}>{s.label}</div>
-          </div>
-        ))}
-      </div>
+      {/* MAIN APP — two column */}
+      <div id="app" style={{
+        display: isMobile ? "block" : "flex",
+        alignItems: "flex-start", gap: "1.5rem",
+        padding: isMobile ? "1rem 1rem 3rem" : "1.5rem 2.5rem 3rem",
+        maxWidth: "1400px", margin: "0 auto", width: "100%",
+      }}>
 
-      {/* DENSITY LEGEND + CATEGORY FILTER */}
-      <div style={{ padding: "8px 24px 4px", display: "flex", alignItems: "center", gap: 16, flexWrap: "wrap", borderTop: "1px solid rgba(255,255,255,0.04)" }}>
-        <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
-          <span style={{ fontSize: 10, fontWeight: 700, color: "#4b5563", letterSpacing: "0.08em" }}>DENSITY:</span>
-          {[{ l: "0", c: "#444" }, { l: "1–2", c: "#3b82f6" }, { l: "3–5", c: "#8b5cf6" }, { l: "6–10", c: "#f97316" }, { l: "10+", c: "#ef4444" }].map(d => (
-            <div key={d.l} style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 10, color: "#6b7280" }}>
-              <span style={{ width: 7, height: 7, borderRadius: "50%", background: d.c, display: "inline-block" }} />
-              {d.l}
-            </div>
-          ))}
-        </div>
-        <div style={{ marginLeft: "auto", display: "flex", gap: 6, flexWrap: "wrap" }}>
-          {["All", ...CATEGORIES].map(c => (
-            <button key={c} onClick={() => setCatFilter(c)} style={{
-              fontSize: 11, fontWeight: 700, padding: "4px 11px", borderRadius: 20, cursor: "pointer",
-              background: catFilter === c ? (c === "All" ? "#8b5cf6" : CAT_COLORS[c]) : "rgba(255,255,255,0.06)",
-              color: catFilter === c ? "#fff" : "#6b7280",
-              border: `1px solid ${catFilter === c ? "transparent" : "rgba(255,255,255,0.08)"}`,
-              transition: "all 0.18s",
-            }}>
-              {c === "All" ? "All" : `${CAT_ICONS[c]} ${c}`}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      {/* MAIN CONTENT */}
-      <div style={{ display: "flex", gap: 0, padding: "16px 24px", alignItems: "flex-start", flexWrap: "wrap" }}>
-
-        {/* CALENDAR */}
-        <div style={{ flex: "1 1 620px", minWidth: 0 }}>
+        {/* LEFT: sticky calendar panel */}
+        <div style={{
+          width: isMobile ? "100%" : "380px",
+          flexShrink: 0,
+          position: isMobile ? "relative" : "sticky",
+          top: "1.5rem",
+          background: "#ffffff",
+          borderRadius: "12px",
+          boxShadow: "0 2px 16px rgba(0,0,0,0.08)",
+          border: "1px solid #e5ddd4",
+          overflow: "hidden",
+          marginBottom: isMobile ? "1rem" : 0,
+        }}>
           {/* Month nav */}
-          <div style={{ display: "flex", alignItems: "center", gap: 14, marginBottom: 14 }}>
-            <h2 style={{ fontSize: 26, fontWeight: 900, letterSpacing: "-0.03em", margin: 0 }}>
-              {MONTH_NAMES[month - 1]} {year}
-            </h2>
-            <div style={{ marginLeft: "auto", display: "flex", gap: 8 }}>
-              <button onClick={() => navigateMonth(-1)} style={{ background: "rgba(255,255,255,0.07)", border: "none", color: "#fff", borderRadius: 9, width: 32, height: 32, cursor: "pointer", fontSize: 14 }}>‹</button>
-              <button onClick={goToday} style={{ background: "linear-gradient(135deg,#6366f1,#8b5cf6)", border: "none", color: "#fff", borderRadius: 9, padding: "0 14px", height: 32, cursor: "pointer", fontSize: 12, fontWeight: 700 }}>Today</button>
-              <button onClick={() => navigateMonth(1)} style={{ background: "rgba(255,255,255,0.07)", border: "none", color: "#fff", borderRadius: 9, width: 32, height: 32, cursor: "pointer", fontSize: 14 }}>›</button>
+          <div style={{ padding: "1rem 1rem 0.75rem", borderBottom: "1px solid #e5ddd4" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              <h2 style={{ fontSize: 18, fontWeight: 900, letterSpacing: "-0.02em", margin: 0, flex: 1, color: "#1a1a1a" }}>
+                {MONTH_NAMES[month - 1]} {year}
+              </h2>
+              <button onClick={() => navigateMonth(-1)} style={{
+                background: "#f0ebe3", border: "1px solid #e5ddd4", color: "#1a1a1a",
+                borderRadius: 8, width: 30, height: 30, cursor: "pointer", fontSize: 14,
+              }}>‹</button>
+              <button onClick={goToday} style={{
+                background: "#1a1a1a", border: "none", color: "#fff",
+                borderRadius: 8, padding: "0 12px", height: 30, cursor: "pointer",
+                fontSize: 11, fontWeight: 700,
+              }}>Today</button>
+              <button onClick={() => navigateMonth(1)} style={{
+                background: "#f0ebe3", border: "1px solid #e5ddd4", color: "#1a1a1a",
+                borderRadius: 8, width: 30, height: 30, cursor: "pointer", fontSize: 14,
+              }}>›</button>
             </div>
+
+            {selectedDay && (
+              <div style={{
+                marginTop: "0.5rem", padding: "6px 10px", background: "#f0ebe3",
+                borderRadius: 8, fontSize: 12, color: "#6b6055", fontWeight: 600,
+                display: "flex", alignItems: "center", justifyContent: "space-between",
+              }}>
+                <span>Filtered: {MONTH_NAMES[month - 1].slice(0, 3)} {selectedDay}</span>
+                <button onClick={() => setSelectedDay(null)} style={{
+                  background: "none", border: "none", cursor: "pointer",
+                  color: "#9c8e82", fontSize: 14, padding: 0,
+                }}>✕</button>
+              </div>
+            )}
           </div>
 
           {/* Day headers */}
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(7,1fr)", gap: 4, marginBottom: 4 }}>
-            {["Sun","Mon","Tue","Wed","Thu","Fri","Sat"].map(d => (
-              <div key={d} style={{ textAlign: "center", fontSize: 11, fontWeight: 700, color: "#4b5563", padding: "4px 0", letterSpacing: "0.06em" }}>{d}</div>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(7,1fr)", gap: 2, padding: "0.5rem 0.75rem 0.25rem" }}>
+            {["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"].map(d => (
+              <div key={d} style={{ textAlign: "center", fontSize: 10, fontWeight: 700, color: "#9c8e82", padding: "3px 0", letterSpacing: "0.04em" }}>{d}</div>
             ))}
           </div>
 
           {/* Calendar grid */}
-          {isLoading ? <CalendarSkeleton /> : (
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(7,1fr)", gap: 4 }}>
-              {paddingBefore.map((_, i) => <div key={`p${i}`} />)}
-              {days.map(day => {
-                const dayEvs = eventsForDay(day);
-                const count = dayEvs.length;
-                const ds = getDensityStyle(count);
-                const isToday = isCurrentMonth && day === todayDay;
-                const catDots = CATEGORIES.filter(c => dayEvs.some(e => e.category === c));
+          <div style={{ padding: "0 0.75rem 0.75rem" }}>
+            {isLoading ? <CalendarSkeleton /> : (
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(7,1fr)", gap: 2 }}>
+                {paddingBefore.map((_, i) => <div key={`p${i}`} />)}
+                {days.map(day => {
+                  const dayEvs = eventsForDay(day);
+                  const count = dayEvs.length;
+                  const ds = getDensityStyle(count);
+                  const isToday = isCurrentMonth && day === todayDay;
+                  const isSelected = selectedDay === day;
+                  const catDots = CATEGORIES.filter(c => dayEvs.some(e => e.category === c));
 
-                return (
-                  <div
-                    key={day}
-                    data-day={day}
-                    onClick={count > 0 ? (e) => handleDayClick(day, e.currentTarget) : undefined}
-                    style={{
-                      background: isToday ? "rgba(99,102,241,0.15)" : ds.bg,
-                      border: isToday ? "1.5px solid #6366f1" : `1px solid rgba(255,255,255,${count > 0 ? "0.08" : "0.04"})`,
-                      borderRadius: 10,
-                      padding: "8px 8px 6px",
-                      minHeight: 70,
-                      cursor: count > 0 ? "pointer" : "default",
-                      position: "relative",
-                      transition: "background 0.2s, box-shadow 0.2s, transform 0.15s",
-                      boxShadow: count > 0 ? ds.glow : "none",
-                      display: "flex", flexDirection: "column",
-                    }}
-                    onMouseEnter={e => {
-                      if (count > 0) {
-                        e.currentTarget.style.transform = "scale(1.03)";
-                        e.currentTarget.style.zIndex = 2;
-                      }
-                    }}
-                    onMouseLeave={e => {
-                      e.currentTarget.style.transform = "scale(1)";
-                      e.currentTarget.style.zIndex = 1;
-                    }}
-                  >
-                    <span style={{
-                      fontSize: 12, fontWeight: isToday ? 900 : 700,
-                      color: isToday ? "#8b5cf6" : count > 0 ? "#e5e7eb" : "#4b5563",
-                    }}>{day}</span>
+                  return (
+                    <div
+                      key={day}
+                      data-day={day}
+                      onClick={() => setSelectedDay(day === selectedDay ? null : day)}
+                      style={{
+                        background: isSelected
+                          ? "#1a1a1a"
+                          : isToday
+                            ? "rgba(124,58,237,0.12)"
+                            : ds.bg,
+                        border: isSelected
+                          ? "1.5px solid #1a1a1a"
+                          : isToday
+                            ? "1.5px solid #7c3aed"
+                            : `1px solid ${count > 0 ? "#e5ddd4" : "rgba(0,0,0,0.05)"}`,
+                        borderRadius: 8,
+                        padding: "6px 5px 5px",
+                        minHeight: 58,
+                        cursor: count > 0 ? "pointer" : "default",
+                        position: "relative",
+                        transition: "background 0.15s",
+                        display: "flex", flexDirection: "column",
+                      }}
+                    >
+                      <span style={{
+                        fontSize: 11, fontWeight: isToday || isSelected ? 900 : 600,
+                        color: isSelected ? "#fff" : isToday ? "#7c3aed" : count > 0 ? "#1a1a1a" : "#9c8e82",
+                      }}>{day}</span>
 
-                    {catDots.length > 0 && (
-                      <div style={{ display: "flex", gap: 3, marginTop: 6, flexWrap: "wrap" }}>
-                        {catDots.slice(0, 4).map(c => <CategoryDot key={c} category={c} size={6} />)}
-                      </div>
-                    )}
+                      {catDots.length > 0 && (
+                        <div style={{ display: "flex", gap: 2, marginTop: 4, flexWrap: "wrap" }}>
+                          {catDots.slice(0, 4).map(c => <CategoryDot key={c} category={c} size={5} />)}
+                        </div>
+                      )}
 
-                    {count > 0 && (
-                      <div style={{
-                        position: "absolute", bottom: 6, right: 6,
-                        background: ds.badge,
-                        color: "#fff", fontSize: 10, fontWeight: 800,
-                        width: 18, height: 18, borderRadius: "50%",
-                        display: "flex", alignItems: "center", justifyContent: "center",
-                        boxShadow: `0 2px 8px ${ds.badge}66`,
-                      }}>{count}</div>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </div>
-
-        {/* SIDEBAR */}
-        <div style={{ width: 260, flexShrink: 0, paddingLeft: 20, minWidth: 220 }}>
-          {/* Category breakdown */}
-          <div style={{
-            background: "rgba(255,255,255,0.03)",
-            border: "1px solid rgba(255,255,255,0.07)",
-            borderRadius: 16, padding: "16px", marginBottom: 14,
-          }}>
-            <div style={{ fontSize: 10, fontWeight: 800, letterSpacing: "0.1em", color: "#4b5563", marginBottom: 12 }}>CATEGORY BREAKDOWN</div>
-            {CATEGORIES.map(c => {
-              const cnt = catCounts[c] || 0;
-              const pct = monthEvents > 0 ? Math.round(cnt / monthEvents * 100) : 0;
-              return (
-                <div key={c} style={{ marginBottom: 10 }}>
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
-                    <span style={{ fontSize: 12, fontWeight: 600, color: "#d1d5db" }}>{CAT_ICONS[c]} {c}</span>
-                    <span style={{ fontSize: 11, color: "#6b7280" }}>{cnt} ({pct}%)</span>
-                  </div>
-                  <div style={{ background: "rgba(255,255,255,0.06)", borderRadius: 4, height: 3, overflow: "hidden" }}>
-                    <div style={{ width: `${pct}%`, height: "100%", background: CAT_COLORS[c], borderRadius: 4, transition: "width 0.5s ease" }} />
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-
-          {/* Hot dates */}
-          <div style={{
-            background: "rgba(255,255,255,0.03)",
-            border: "1px solid rgba(255,255,255,0.07)",
-            borderRadius: 16, padding: "16px",
-          }}>
-            <div style={{ fontSize: 10, fontWeight: 800, letterSpacing: "0.1em", color: "#4b5563", marginBottom: 12 }}>🔥 HOT DATES</div>
-            {hotDays.length === 0 && (
-              <div style={{ fontSize: 12, color: "#4b5563", textAlign: "center", padding: "16px 0" }}>
-                {isLoading ? "Loading…" : "No events yet"}
+                      {count > 0 && (
+                        <div style={{
+                          position: "absolute", bottom: 4, right: 4,
+                          background: isSelected ? "rgba(255,255,255,0.25)" : ds.badge,
+                          color: "#fff", fontSize: 9, fontWeight: 800,
+                          width: 16, height: 16, borderRadius: "50%",
+                          display: "flex", alignItems: "center", justifyContent: "center",
+                        }}>{count}</div>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
             )}
-            {hotDays.map(({ d, c }) => {
-              const ds = getDensityStyle(c);
-              const dateLabel = new Date(year, month - 1, d)
-                .toLocaleDateString("en-CA", { weekday: "short", month: "short", day: "numeric" });
-              return (
-                <div key={d} style={{
-                  display: "flex", justifyContent: "space-between", alignItems: "center",
-                  padding: "8px 0", borderBottom: "1px solid rgba(255,255,255,0.05)",
-                  cursor: "pointer",
-                }} onClick={() => {
-                  const calCell = document.querySelector(`[data-day="${d}"]`);
-                  if (calCell) handleDayClick(d, calCell);
+          </div>
+
+          {/* Category filter pills */}
+          <div style={{ padding: "0.75rem", borderTop: "1px solid #e5ddd4" }}>
+            <div style={{ display: "flex", gap: 5, flexWrap: "wrap" }}>
+              {["All", ...CATEGORIES].map(c => (
+                <button key={c} onClick={() => setCatFilter(c)} style={{
+                  fontSize: 10, fontWeight: 700, padding: "3px 9px", borderRadius: 20, cursor: "pointer",
+                  background: catFilter === c ? (c === "All" ? "#1a1a1a" : CAT_COLORS[c]) : "#f0ebe3",
+                  color: catFilter === c ? "#fff" : "#6b6055",
+                  border: `1px solid ${catFilter === c ? "transparent" : "#e5ddd4"}`,
+                  transition: "all 0.15s",
                 }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                    <span style={{ width: 8, height: 8, borderRadius: "50%", background: ds.badge, display: "inline-block", boxShadow: `0 0 5px ${ds.badge}` }} />
-                    <span style={{ fontSize: 13, fontWeight: 600, color: "#e5e7eb" }}>{dateLabel}</span>
-                  </div>
-                  <span style={{ fontSize: 13, fontWeight: 800, color: ds.badge }}>{c}</span>
-                </div>
-              );
-            })}
+                  {c === "All" ? "All" : `${CAT_ICONS[c]} ${c}`}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        {/* RIGHT: event list */}
+        <div style={{
+          flex: 1, minWidth: 0,
+          maxHeight: isMobile ? "none" : "calc(100vh - 120px)",
+          overflowY: "auto",
+        }}>
+          {/* Sticky search bar */}
+          <div style={{
+            position: "sticky", top: 0, zIndex: 10,
+            background: "#f0ebe3", paddingBottom: "0.75rem",
+          }}>
+            <div style={{ position: "relative" }}>
+              <span style={{
+                position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)",
+                fontSize: 14, color: "#9c8e82",
+              }}>🔍</span>
+              <input
+                value={search}
+                onChange={e => setSearch(e.target.value)}
+                placeholder="Search artists, venues, events…"
+                style={{
+                  width: "100%", boxSizing: "border-box",
+                  background: "#ffffff",
+                  border: "1px solid #e5ddd4",
+                  borderRadius: 10, color: "#1a1a1a",
+                  padding: "10px 12px 10px 36px",
+                  fontSize: 13, outline: "none",
+                  boxShadow: "0 1px 6px rgba(0,0,0,0.07)",
+                }}
+              />
+              <button
+                onClick={handleSync}
+                style={{
+                  position: "absolute", right: 8, top: "50%", transform: "translateY(-50%)",
+                  background: isFetching ? "#f0ebe3" : "#1a1a1a",
+                  border: "none", borderRadius: 8, padding: "5px 12px",
+                  color: isFetching ? "#6b6055" : "#fff",
+                  fontSize: 11, fontWeight: 700, cursor: "pointer",
+                  display: "flex", alignItems: "center", gap: 5,
+                }}
+              >
+                <span style={{ display: "inline-block", animation: isFetching ? "spin 0.8s linear infinite" : "none" }}>⟳</span>
+                {isFetching ? "Loading…" : "Refresh"}
+              </button>
+            </div>
+          </div>
+
+          {/* Active day filter indicator */}
+          {selectedDay && (
+            <div style={{
+              marginBottom: "0.75rem", padding: "8px 12px",
+              background: "#1a1a1a", borderRadius: 8,
+              fontSize: 12, color: "#fff", fontWeight: 600,
+              display: "flex", alignItems: "center", justifyContent: "space-between",
+            }}>
+              <span>Showing events for {MONTH_NAMES[month - 1]} {selectedDay} · {filteredEvents.length} event{filteredEvents.length !== 1 ? "s" : ""}</span>
+              <button onClick={() => setSelectedDay(null)} style={{
+                background: "rgba(255,255,255,0.15)", border: "none", borderRadius: 6,
+                color: "#fff", fontSize: 11, padding: "2px 8px", cursor: "pointer", fontWeight: 700,
+              }}>Clear</button>
+            </div>
+          )}
+
+          {/* Event count label */}
+          {!selectedDay && (
+            <div style={{ fontSize: 12, color: "#9c8e82", marginBottom: "0.75rem", fontWeight: 600 }}>
+              {isLoading ? "Loading events…" : `${filteredEvents.length} events in ${MONTH_NAMES[month - 1]} ${year}`}
+            </div>
+          )}
+
+          {/* Event cards */}
+          <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
+            {filteredEvents.length === 0 && !isLoading && (
+              <div style={{
+                textAlign: "center", padding: "3rem 1rem",
+                color: "#9c8e82", fontSize: 14,
+              }}>
+                {isError
+                  ? "Could not load events. Is the backend running?"
+                  : selectedDay
+                    ? `No events on ${MONTH_NAMES[month - 1]} ${selectedDay}.`
+                    : "No events match your filters."
+                }
+              </div>
+            )}
+            {isLoading && (
+              <div style={{ textAlign: "center", padding: "3rem 1rem", color: "#9c8e82", fontSize: 13 }}>
+                Loading events…
+              </div>
+            )}
+            {filteredEvents.map(ev => (
+              <EventCard key={ev.id} event={ev} onLike={handleLike} onNotify={handleNotify} />
+            ))}
           </div>
         </div>
       </div>
 
-      {/* ── DISCOVER SECTION ──────────────────────────────────────────── */}
-      <div style={{ padding: "8px 24px 32px" }}>
-        <div style={{ marginBottom: 16, display: "flex", alignItems: "center", gap: 12 }}>
-          <div>
-            <h3 style={{ margin: 0, fontSize: 20, fontWeight: 900, letterSpacing: "-0.02em" }}>🎲 Discover</h3>
-            <p style={{ margin: 0, fontSize: 12, color: "#4b5563", marginTop: 2 }}>Randomly surfaced from the current view</p>
-          </div>
-          <button
-            onClick={() => setDiscoverKey(k => k + 1)}
-            style={{
-              marginLeft: "auto",
-              background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.1)",
-              color: "#9ca3af", borderRadius: 10, padding: "7px 14px",
-              fontSize: 12, fontWeight: 700, cursor: "pointer",
-            }}
-          >Shuffle ⟳</button>
-          <button onClick={() => { discoverRef.current.scrollBy({ left: -310, behavior: "smooth" }) }} style={{ background: "rgba(255,255,255,0.07)", border: "none", color: "#fff", borderRadius: 9, width: 32, height: 32, cursor: "pointer", fontSize: 16 }}>‹</button>
-          <button onClick={() => { discoverRef.current.scrollBy({ left: 310, behavior: "smooth" }) }} style={{ background: "rgba(255,255,255,0.07)", border: "none", color: "#fff", borderRadius: 9, width: 32, height: 32, cursor: "pointer", fontSize: 16 }}>›</button>
-        </div>
-
-        {discoverEvents.length === 0 && !isLoading && (
-          <div style={{ textAlign: "center", color: "#4b5563", padding: "40px 0", fontSize: 14 }}>
-            {isError ? "Could not load events." : "No events found. Try running a sync from the admin panel."}
-          </div>
-        )}
-
-        <div
-          ref={discoverRef}
-          style={{
-            display: "flex", gap: 14, overflowX: "auto",
-            paddingBottom: 12,
-            scrollbarWidth: "none",
-            msOverflowStyle: "none",
-          }}
-        >
-          {discoverEvents.map(ev => (
-            <DiscoverCard key={ev.id} event={ev} onLike={handleLike} onNotify={handleNotify} />
-          ))}
-        </div>
-      </div>
-
-      {/* DATE BUBBLE */}
-      {selectedDay !== null && bubbleAnchor && (
-        <DateBubble
-          day={selectedDay}
-          month={month}
-          year={year}
-          events={eventsForDay(selectedDay)}
-          anchor={bubbleAnchor}
-          onClose={() => { setSelectedDay(null); setBubbleAnchor(null); }}
-          onLike={handleLike}
-          onNotify={handleNotify}
-        />
-      )}
-
+      {/* Global styles */}
       <style>{`
         * { box-sizing: border-box; }
         ::-webkit-scrollbar { width: 4px; height: 4px; }
         ::-webkit-scrollbar-track { background: transparent; }
-        ::-webkit-scrollbar-thumb { background: rgba(139,92,246,0.4); border-radius: 4px; }
+        ::-webkit-scrollbar-thumb { background: rgba(0,0,0,0.15); border-radius: 4px; }
         @keyframes spin { to { transform: rotate(360deg); } }
         @keyframes fadeIn { from { opacity:0; transform:translateX(-50%) translateY(-6px); } to { opacity:1; transform:translateX(-50%) translateY(0); } }
+        @keyframes bounceDown { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(5px); } }
         @keyframes pulse { 0%, 100% { opacity: 0.4; } 50% { opacity: 0.7; } }
       `}</style>
     </div>
