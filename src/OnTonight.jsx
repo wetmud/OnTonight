@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback, useEffect } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Clock, MapPin, Heart, Bell, X, Ticket } from "@phosphor-icons/react";
 
@@ -92,6 +92,8 @@ function normalizeApiEvent(raw, liked, notified) {
     day,
     time,
     venue:          raw.venues?.name || "Unknown Venue",
+    venueLat:       raw.venues?.latitude || null,
+    venueLng:       raw.venues?.longitude || null,
     source,
     priceMin:       raw.price_min,
     priceMax:       raw.price_max,
@@ -112,6 +114,26 @@ function getDensityStyle(count, maxCount = 10) {
   if (pct <= 0.55) return { bg: "rgba(212,139,45,0.28)",  dot: "#D48B2D", badge: "#D48B2D" };
   if (pct <= 0.80) return { bg: "rgba(192,57,43,0.22)",   dot: "#C0392B", badge: "#C0392B" };
   return { bg: "rgba(192,57,43,0.38)", dot: "#C0392B", badge: "#C0392B" };
+}
+
+// ─── LOCATION HELPERS ────────────────────────────────────────────────────────
+
+function haversineKm(lat1, lng1, lat2, lng2) {
+  const R = 6371;
+  const dLat = (lat2 - lat1) * Math.PI / 180;
+  const dLng = (lng2 - lng1) * Math.PI / 180;
+  const a = Math.sin(dLat / 2) ** 2
+    + Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.sin(dLng / 2) ** 2;
+  return R * 2 * Math.asin(Math.sqrt(a));
+}
+
+const LOCATION_KEY = "ontonight_location";
+
+function loadSavedLocation() {
+  try {
+    const raw = localStorage.getItem(LOCATION_KEY);
+    return raw ? JSON.parse(raw) : null;
+  } catch { return null; }
 }
 
 // ─── SUB-COMPONENTS ──────────────────────────────────────────────────────────
@@ -138,7 +160,119 @@ function CategoryDot({ category, size = 7 }) {
   );
 }
 
-function EventCard({ event, onLike, onNotify, onOpen }) {
+const RADIUS_OPTIONS = [
+  { label: "5 km", value: 5 },
+  { label: "10 km", value: 10 },
+  { label: "25 km", value: 25 },
+  { label: "GTA-wide", value: 9999 },
+];
+
+function LocationModal({ current, onSave, onClose }) {
+  const [radius, setRadius] = useState(current?.radiusKm ?? 10);
+  const [status, setStatus] = useState(null); // null | "loading" | "error"
+
+  useEffect(() => {
+    const handler = (e) => { if (e.key === "Escape") onClose(); };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [onClose]);
+
+  const useGeo = () => {
+    if (!navigator.geolocation) { setStatus("error"); return; }
+    setStatus("loading");
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        onSave({ lat: pos.coords.latitude, lng: pos.coords.longitude, label: "My location", radiusKm: radius });
+        onClose();
+      },
+      () => setStatus("error"),
+    );
+  };
+
+  return (
+    <div
+      onClick={onClose}
+      style={{
+        position: "fixed", inset: 0, zIndex: 1000,
+        background: "rgba(26,23,20,0.55)", backdropFilter: "blur(3px)",
+        display: "flex", alignItems: "center", justifyContent: "center",
+        padding: "1rem", animation: "overlayIn 0.2s ease",
+      }}
+    >
+      <div
+        onClick={e => e.stopPropagation()}
+        style={{
+          background: "#FAF8F4", borderRadius: 16, width: "100%", maxWidth: 380,
+          padding: "1.5rem", boxShadow: "0 24px 64px rgba(0,0,0,0.3)",
+          animation: "modalIn 0.25s cubic-bezier(0.16,1,0.3,1)",
+        }}
+      >
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "1.25rem" }}>
+          <h3 style={{ margin: 0, fontSize: 16, fontWeight: 800, color: "#1A1714", fontFamily: "'Playfair Display', Georgia, serif" }}>
+            Set your area
+          </h3>
+          <button onClick={onClose} style={{ background: "none", border: "none", cursor: "pointer", color: "#9c8e82" }}>
+            <X size={18} weight="bold" />
+          </button>
+        </div>
+
+        <div style={{ marginBottom: "1.25rem" }}>
+          <div style={{ fontSize: 11, fontWeight: 700, color: "#9c8e82", letterSpacing: "0.06em", textTransform: "uppercase", marginBottom: 8 }}>Radius</div>
+          <div style={{ display: "flex", gap: 6 }}>
+            {RADIUS_OPTIONS.map(opt => (
+              <button
+                key={opt.value}
+                onClick={() => setRadius(opt.value)}
+                style={{
+                  flex: 1, padding: "7px 4px",
+                  background: radius === opt.value ? "#1A1714" : "#F5F0E8",
+                  color: radius === opt.value ? "#fff" : "#6b6055",
+                  border: `1px solid ${radius === opt.value ? "#1A1714" : "#E8E2D9"}`,
+                  borderRadius: 8, fontSize: 11, fontWeight: 700, cursor: "pointer",
+                }}
+              >{opt.label}</button>
+            ))}
+          </div>
+        </div>
+
+        <button
+          onClick={useGeo}
+          disabled={status === "loading"}
+          style={{
+            width: "100%", padding: "10px",
+            background: status === "loading" ? "#F5F0E8" : "#1A1714",
+            color: status === "loading" ? "#9c8e82" : "#fff",
+            border: "none", borderRadius: 10, fontSize: 13, fontWeight: 700, cursor: "pointer",
+            display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
+          }}
+        >
+          <MapPin size={14} weight="bold" />
+          {status === "loading" ? "Getting location…" : "Use my location"}
+        </button>
+
+        {status === "error" && (
+          <p style={{ margin: "8px 0 0", fontSize: 11, color: "#b91c1c", textAlign: "center" }}>
+            Location access denied. Enable it in your browser settings.
+          </p>
+        )}
+
+        {current && (
+          <button
+            onClick={() => { onSave(null); onClose(); }}
+            style={{
+              width: "100%", marginTop: 8, padding: "8px",
+              background: "transparent", color: "#9c8e82",
+              border: "1px solid #E8E2D9", borderRadius: 10,
+              fontSize: 12, fontWeight: 600, cursor: "pointer",
+            }}
+          >Clear location filter</button>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function EventCard({ event, onLike, onNotify, onOpen, animatingLike }) {
   const catColor = CAT_COLORS[event.category] || "#6b7280";
   return (
     <div
@@ -192,6 +326,7 @@ function EventCard({ event, onLike, onNotify, onOpen }) {
             borderRadius: 8, width: 30, height: 30, cursor: "pointer",
             display: "flex", alignItems: "center", justifyContent: "center",
             color: event.liked ? "#e63030" : "#9c8e82",
+            animation: animatingLike ? "heartBounce 0.4s cubic-bezier(0.16,1,0.3,1)" : "none",
           }}
         ><Heart size={14} weight={event.liked ? "fill" : "regular"} /></button>
         <button
@@ -446,6 +581,10 @@ export default function OnTonight() {
   const [catFilter, setCatFilter] = useState("All");
   const [toast, setToast] = useState(null);
   const [selectedEvent, setSelectedEvent] = useState(null);
+  const [likedAnimating, setLikedAnimating] = useState(new Set());
+  const [userLocation, setUserLocation] = useState(() => loadSavedLocation());
+  const [radiusKm, setRadiusKm] = useState(() => loadSavedLocation()?.radiusKm ?? 10);
+  const [showLocationModal, setShowLocationModal] = useState(false);
 
   const [windowWidth, setWindowWidth] = useState(typeof window !== "undefined" ? window.innerWidth : 1200);
   useEffect(() => {
@@ -473,7 +612,10 @@ export default function OnTonight() {
       e.artist.toLowerCase().includes(search.toLowerCase());
     const matchCat = catFilter === "All" || e.category === catFilter;
     const matchDay = !selectedDay || e.day === selectedDay;
-    return matchSearch && matchCat && matchDay;
+    const matchLocation = !userLocation || radiusKm >= 9999 ||
+      (e.venueLat != null && e.venueLng != null &&
+        haversineKm(userLocation.lat, userLocation.lng, e.venueLat, e.venueLng) <= radiusKm);
+    return matchSearch && matchCat && matchDay && matchLocation;
   });
 
   const eventsForDay = (day) => allEvents.filter(e => e.day === day);
@@ -506,12 +648,14 @@ export default function OnTonight() {
         next.delete(id);
       } else {
         next.add(id);
-        const ev = allEvents.find(e => e.id === id);
-        if (ev) showToast(`❤️ Liked ${ev.title}`);
+        // Spring-bounce animation
+        setLikedAnimating(a => { const s = new Set(a); s.add(id); return s; });
+        setTimeout(() => setLikedAnimating(a => { const s = new Set(a); s.delete(id); return s; }), 420);
+        showToast("Saved to your night.");
       }
       return next;
     });
-  }, [allEvents, showToast]);
+  }, [showToast]);
 
   const handleNotify = useCallback((id) => {
     setNotified(prev => {
@@ -521,11 +665,23 @@ export default function OnTonight() {
       } else {
         next.add(id);
         const ev = allEvents.find(e => e.id === id);
-        if (ev) showToast(`🔔 You'll be notified about ${ev.title}`);
+        if (ev) showToast(`Reminder set for ${ev.title}`);
       }
       return next;
     });
   }, [allEvents, showToast]);
+
+  const handleSaveLocation = useCallback((loc) => {
+    if (loc) {
+      localStorage.setItem(LOCATION_KEY, JSON.stringify(loc));
+      setUserLocation(loc);
+      setRadiusKm(loc.radiusKm);
+    } else {
+      localStorage.removeItem(LOCATION_KEY);
+      setUserLocation(null);
+      setRadiusKm(10);
+    }
+  }, []);
 
   const handleSync = () => {
     refetch();
@@ -559,17 +715,26 @@ export default function OnTonight() {
   return (
     <div style={{ fontFamily: "'Inter', 'Helvetica Neue', Arial, sans-serif", background: THEME.paper, minHeight: "100vh", color: THEME.ink, overflowX: "hidden" }}>
 
-      {/* Toast */}
+      {/* Toast — bottom center */}
       {toast && (
         <div style={{
-          position: "fixed", top: 20, left: "50%", transform: "translateX(-50%)",
-          background: "rgba(26,26,26,0.92)", color: "#fff",
+          position: "fixed", bottom: 28, left: "50%", transform: "translateX(-50%)",
+          background: "rgba(26,23,20,0.92)", color: "#fff",
           padding: "10px 20px", borderRadius: 30,
           fontSize: 13, fontWeight: 700, zIndex: 9999,
           boxShadow: "0 8px 32px rgba(0,0,0,0.25)",
-          animation: "fadeIn 0.2s ease",
+          animation: "toastIn 0.25s cubic-bezier(0.16,1,0.3,1)",
           whiteSpace: "nowrap",
         }}>{toast}</div>
+      )}
+
+      {/* Location Modal */}
+      {showLocationModal && (
+        <LocationModal
+          current={userLocation}
+          onSave={handleSaveLocation}
+          onClose={() => setShowLocationModal(false)}
+        />
       )}
 
       {/* Event Modal */}
@@ -741,7 +906,7 @@ export default function OnTonight() {
           </div>
         )}
 
-        {/* Category breakdown pills */}
+        {/* Category breakdown pills + location */}
         <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
           <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.08em", color: "#9c8e82" }}>CATEGORIES</span>
           <button
@@ -775,6 +940,41 @@ export default function OnTonight() {
               <span style={{ opacity: 0.65, fontSize: 10 }}>({catCounts[c]})</span>
             </button>
           ))}
+
+          {/* Location filter chip */}
+          {userLocation ? (
+            <button
+              onClick={() => setShowLocationModal(true)}
+              style={{
+                background: "#1A1714", color: "#fff",
+                border: "1px solid #1A1714",
+                borderRadius: 20, padding: "4px 10px",
+                fontSize: 11, fontWeight: 700, cursor: "pointer",
+                display: "flex", alignItems: "center", gap: 5,
+              }}
+            >
+              <MapPin size={10} weight="fill" />
+              Within {radiusKm >= 9999 ? "GTA" : `${radiusKm}km`}
+              <span
+                onClick={e => { e.stopPropagation(); handleSaveLocation(null); }}
+                style={{ opacity: 0.7, marginLeft: 2, lineHeight: 1 }}
+              >×</span>
+            </button>
+          ) : (
+            <button
+              onClick={() => setShowLocationModal(true)}
+              style={{
+                background: "#fff", color: "#6b6055",
+                border: "1px dashed #d4ccc4",
+                borderRadius: 20, padding: "4px 10px",
+                fontSize: 11, fontWeight: 600, cursor: "pointer",
+                display: "flex", alignItems: "center", gap: 5,
+              }}
+            >
+              <MapPin size={10} weight="regular" />
+              Set area
+            </button>
+          )}
         </div>
       </div>
 
@@ -1044,7 +1244,7 @@ export default function OnTonight() {
               </div>
             )}
             {filteredEvents.map(ev => (
-              <EventCard key={ev.id} event={ev} onLike={handleLike} onNotify={handleNotify} onOpen={setSelectedEvent} />
+              <EventCard key={ev.id} event={ev} onLike={handleLike} onNotify={handleNotify} onOpen={setSelectedEvent} animatingLike={likedAnimating.has(ev.id)} />
             ))}
           </div>
         </div>
@@ -1057,7 +1257,8 @@ export default function OnTonight() {
         ::-webkit-scrollbar-track { background: transparent; }
         ::-webkit-scrollbar-thumb { background: rgba(0,0,0,0.15); border-radius: 4px; }
         @keyframes spin { to { transform: rotate(360deg); } }
-        @keyframes fadeIn { from { opacity:0; transform:translateX(-50%) translateY(-6px); } to { opacity:1; transform:translateX(-50%) translateY(0); } }
+        @keyframes toastIn { from { opacity:0; transform:translateX(-50%) translateY(12px); } to { opacity:1; transform:translateX(-50%) translateY(0); } }
+        @keyframes heartBounce { 0% { transform: scale(1); } 40% { transform: scale(1.45); } 70% { transform: scale(0.9); } 100% { transform: scale(1); } }
         @keyframes overlayIn { from { opacity:0; } to { opacity:1; } }
         @keyframes modalIn { from { opacity:0; transform: scale(0.96) translateY(8px); } to { opacity:1; transform: scale(1) translateY(0); } }
         @keyframes bounceDown { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(5px); } }
