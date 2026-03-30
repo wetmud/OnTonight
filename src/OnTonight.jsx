@@ -36,6 +36,8 @@ const CAT_ICONS = {
   Other:     "✨",
 };
 
+const ACTIVE_SOURCES = ["Ticketmaster"];
+const COMING_SOURCES = ["Eventbrite", "Songkick", "Bandsintown"];
 const SOURCES = ["Ticketmaster", "Eventbrite", "Bandsintown", "Songkick", "StubHub"];
 const SOURCE_COLORS = {
   Ticketmaster: "#026cdf",
@@ -127,6 +129,21 @@ function haversineKm(lat1, lng1, lat2, lng2) {
   return R * 2 * Math.asin(Math.sqrt(a));
 }
 
+const GTA_AREAS = [
+  { label: "Downtown Toronto",    lat: 43.6532, lng: -79.3832 },
+  { label: "Midtown (Yonge & Eg)", lat: 43.7075, lng: -79.3977 },
+  { label: "West End (Kensington)", lat: 43.6536, lng: -79.4013 },
+  { label: "East End (Leslieville)", lat: 43.6629, lng: -79.3306 },
+  { label: "North York",           lat: 43.7615, lng: -79.4111 },
+  { label: "Scarborough",          lat: 43.7731, lng: -79.2580 },
+  { label: "Etobicoke",            lat: 43.6205, lng: -79.5132 },
+  { label: "Mississauga",          lat: 43.5890, lng: -79.6441 },
+  { label: "Brampton",             lat: 43.7315, lng: -79.7624 },
+  { label: "Oakville",             lat: 43.4675, lng: -79.6877 },
+  { label: "Burlington",           lat: 43.3255, lng: -79.7990 },
+  { label: "Hamilton",             lat: 43.2557, lng: -79.8711 },
+];
+
 const LOCATION_KEY = "ontonight_location";
 
 function loadSavedLocation() {
@@ -169,7 +186,7 @@ const RADIUS_OPTIONS = [
 
 function LocationModal({ current, onSave, onClose }) {
   const [radius, setRadius] = useState(current?.radiusKm ?? 10);
-  const [status, setStatus] = useState(null); // null | "loading" | "error"
+  const [geoStatus, setGeoStatus] = useState(null);
 
   useEffect(() => {
     const handler = (e) => { if (e.key === "Escape") onClose(); };
@@ -177,15 +194,20 @@ function LocationModal({ current, onSave, onClose }) {
     return () => window.removeEventListener("keydown", handler);
   }, [onClose]);
 
+  const pickArea = (area) => {
+    onSave({ lat: area.lat, lng: area.lng, label: area.label, radiusKm: radius });
+    onClose();
+  };
+
   const useGeo = () => {
-    if (!navigator.geolocation) { setStatus("error"); return; }
-    setStatus("loading");
+    if (!navigator.geolocation) { setGeoStatus("error"); return; }
+    setGeoStatus("loading");
     navigator.geolocation.getCurrentPosition(
       (pos) => {
         onSave({ lat: pos.coords.latitude, lng: pos.coords.longitude, label: "My location", radiusKm: radius });
         onClose();
       },
-      () => setStatus("error"),
+      () => setGeoStatus("error"),
     );
   };
 
@@ -202,12 +224,14 @@ function LocationModal({ current, onSave, onClose }) {
       <div
         onClick={e => e.stopPropagation()}
         style={{
-          background: "#FAF8F4", borderRadius: 16, width: "100%", maxWidth: 380,
-          padding: "1.5rem", boxShadow: "0 24px 64px rgba(0,0,0,0.3)",
+          background: "#FAF8F4", borderRadius: 16, width: "100%", maxWidth: 400,
+          boxShadow: "0 24px 64px rgba(0,0,0,0.3)",
           animation: "modalIn 0.25s cubic-bezier(0.16,1,0.3,1)",
+          overflow: "hidden",
         }}
       >
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "1.25rem" }}>
+        {/* Header */}
+        <div style={{ padding: "1.25rem 1.5rem 1rem", borderBottom: "1px solid #E8E2D9", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
           <h3 style={{ margin: 0, fontSize: 16, fontWeight: 800, color: "#1A1714", fontFamily: "'Playfair Display', Georgia, serif" }}>
             Set your area
           </h3>
@@ -216,57 +240,84 @@ function LocationModal({ current, onSave, onClose }) {
           </button>
         </div>
 
-        <div style={{ marginBottom: "1.25rem" }}>
-          <div style={{ fontSize: 11, fontWeight: 700, color: "#9c8e82", letterSpacing: "0.06em", textTransform: "uppercase", marginBottom: 8 }}>Radius</div>
-          <div style={{ display: "flex", gap: 6 }}>
-            {RADIUS_OPTIONS.map(opt => (
-              <button
-                key={opt.value}
-                onClick={() => setRadius(opt.value)}
-                style={{
-                  flex: 1, padding: "7px 4px",
-                  background: radius === opt.value ? "#1A1714" : "#F5F0E8",
-                  color: radius === opt.value ? "#fff" : "#6b6055",
-                  border: `1px solid ${radius === opt.value ? "#1A1714" : "#E8E2D9"}`,
-                  borderRadius: 8, fontSize: 11, fontWeight: 700, cursor: "pointer",
-                }}
-              >{opt.label}</button>
-            ))}
+        <div style={{ padding: "1rem 1.5rem" }}>
+          {/* Radius row */}
+          <div style={{ marginBottom: "1rem" }}>
+            <div style={{ fontSize: 10, fontWeight: 700, color: "#9c8e82", letterSpacing: "0.06em", textTransform: "uppercase", marginBottom: 6 }}>Radius</div>
+            <div style={{ display: "flex", gap: 5 }}>
+              {RADIUS_OPTIONS.map(opt => (
+                <button
+                  key={opt.value}
+                  onClick={() => setRadius(opt.value)}
+                  style={{
+                    flex: 1, padding: "6px 4px",
+                    background: radius === opt.value ? "#1A1714" : "#F5F0E8",
+                    color: radius === opt.value ? "#fff" : "#6b6055",
+                    border: `1px solid ${radius === opt.value ? "#1A1714" : "#E8E2D9"}`,
+                    borderRadius: 8, fontSize: 11, fontWeight: 700, cursor: "pointer",
+                  }}
+                >{opt.label}</button>
+              ))}
+            </div>
           </div>
-        </div>
 
-        <button
-          onClick={useGeo}
-          disabled={status === "loading"}
-          style={{
-            width: "100%", padding: "10px",
-            background: status === "loading" ? "#F5F0E8" : "#1A1714",
-            color: status === "loading" ? "#9c8e82" : "#fff",
-            border: "none", borderRadius: 10, fontSize: 13, fontWeight: 700, cursor: "pointer",
-            display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
-          }}
-        >
-          <MapPin size={14} weight="bold" />
-          {status === "loading" ? "Getting location…" : "Use my location"}
-        </button>
+          {/* GTA area list */}
+          <div style={{ marginBottom: "1rem" }}>
+            <div style={{ fontSize: 10, fontWeight: 700, color: "#9c8e82", letterSpacing: "0.06em", textTransform: "uppercase", marginBottom: 6 }}>GTA Area</div>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 5 }}>
+              {GTA_AREAS.map(area => {
+                const isActive = current?.label === area.label;
+                return (
+                  <button
+                    key={area.label}
+                    onClick={() => pickArea(area)}
+                    style={{
+                      padding: "7px 10px", textAlign: "left",
+                      background: isActive ? "#1A1714" : "#fff",
+                      color: isActive ? "#fff" : "#1A1714",
+                      border: `1px solid ${isActive ? "#1A1714" : "#E8E2D9"}`,
+                      borderRadius: 8, fontSize: 11, fontWeight: 600, cursor: "pointer",
+                    }}
+                  >{area.label}</button>
+                );
+              })}
+            </div>
+          </div>
 
-        {status === "error" && (
-          <p style={{ margin: "8px 0 0", fontSize: 11, color: "#b91c1c", textAlign: "center" }}>
-            Location access denied. Enable it in your browser settings.
-          </p>
-        )}
-
-        {current && (
+          {/* Geo button */}
           <button
-            onClick={() => { onSave(null); onClose(); }}
+            onClick={useGeo}
+            disabled={geoStatus === "loading"}
             style={{
-              width: "100%", marginTop: 8, padding: "8px",
-              background: "transparent", color: "#9c8e82",
+              width: "100%", padding: "9px",
+              background: geoStatus === "loading" ? "#F5F0E8" : "transparent",
+              color: geoStatus === "loading" ? "#9c8e82" : "#1A1714",
               border: "1px solid #E8E2D9", borderRadius: 10,
-              fontSize: 12, fontWeight: 600, cursor: "pointer",
+              fontSize: 12, fontWeight: 700, cursor: "pointer",
+              display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
             }}
-          >Clear location filter</button>
-        )}
+          >
+            <MapPin size={13} weight={current?.label === "My location" ? "fill" : "regular"} />
+            {geoStatus === "loading" ? "Getting location…" : current?.label === "My location" ? "My location (active)" : "Use my exact location"}
+          </button>
+
+          {geoStatus === "error" && (
+            <p style={{ margin: "6px 0 0", fontSize: 11, color: "#b91c1c", textAlign: "center" }}>
+              Location access denied — enable it in browser settings.
+            </p>
+          )}
+
+          {current && (
+            <button
+              onClick={() => { onSave(null); onClose(); }}
+              style={{
+                width: "100%", marginTop: 6, padding: "8px",
+                background: "transparent", color: "#9c8e82",
+                border: "none", fontSize: 11, fontWeight: 600, cursor: "pointer",
+              }}
+            >Clear filter</button>
+          )}
+        </div>
       </div>
     </div>
   );
@@ -562,6 +613,119 @@ function EventModal({ event, onClose, onLike, onNotify }) {
               </a>
             )}
           </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── MY NIGHT PANEL ──────────────────────────────────────────────────────────
+
+function MyNightPanel({ likedEvents, onOpen, syncedLabel, isError, totalEvents, month, year }) {
+  return (
+    <div style={{
+      width: 268, flexShrink: 0,
+      display: "flex", flexDirection: "column", gap: "0.75rem",
+    }}>
+      {/* Saved events */}
+      <div style={{
+        background: "#ffffff", borderRadius: 12,
+        boxShadow: "0 2px 16px rgba(0,0,0,0.08)",
+        border: "1px solid #E8E2D9", overflow: "hidden",
+      }}>
+        <div style={{ padding: "0.85rem 1rem", borderBottom: "1px solid #E8E2D9" }}>
+          <div style={{ fontSize: 13, fontWeight: 800, color: "#1A1714" }}>My Night</div>
+          <div style={{ fontSize: 10, color: "#9c8e82", marginTop: 1 }}>
+            {likedEvents.length > 0 ? `${likedEvents.length} saved` : "Nothing saved yet"}
+          </div>
+        </div>
+
+        {likedEvents.length === 0 ? (
+          <div style={{ padding: "1.5rem 1rem", textAlign: "center", color: "#9c8e82" }}>
+            <Heart size={24} weight="regular" style={{ opacity: 0.3, display: "block", margin: "0 auto 8px" }} />
+            <div style={{ fontSize: 12, lineHeight: 1.4 }}>
+              Tap the heart on any event to save it here.
+            </div>
+          </div>
+        ) : (
+          <div style={{ maxHeight: 320, overflowY: "auto" }}>
+            {likedEvents.map(ev => (
+              <div
+                key={ev.id}
+                onClick={() => onOpen(ev)}
+                style={{
+                  padding: "0.65rem 1rem",
+                  borderBottom: "1px solid #F0EDE8",
+                  cursor: "pointer",
+                  borderLeft: `3px solid ${CAT_COLORS[ev.category] || "#6b7280"}`,
+                  transition: "background 0.1s",
+                }}
+                onMouseEnter={e => e.currentTarget.style.background = "#F5F0E8"}
+                onMouseLeave={e => e.currentTarget.style.background = "transparent"}
+              >
+                <div style={{ fontSize: 12, fontWeight: 700, color: "#1A1714", lineHeight: 1.3, marginBottom: 2 }}>
+                  {ev.title}
+                </div>
+                <div style={{ fontSize: 10, color: "#9c8e82", display: "flex", gap: 6 }}>
+                  <span>{ev.time || "—"}</span>
+                  <span>·</span>
+                  <span>{ev.venue}</span>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Account placeholder */}
+      <div style={{
+        background: "#ffffff", borderRadius: 12,
+        boxShadow: "0 2px 16px rgba(0,0,0,0.08)",
+        border: "1px solid #E8E2D9",
+        padding: "1rem",
+      }}>
+        <div style={{ fontSize: 12, fontWeight: 800, color: "#1A1714", marginBottom: 4 }}>Account</div>
+        <div style={{ fontSize: 11, color: "#9c8e82", lineHeight: 1.5, marginBottom: 10 }}>
+          Sign in to save events across devices and get reminders.
+        </div>
+        <button style={{
+          width: "100%", padding: "8px",
+          background: "#1A1714", color: "#fff",
+          border: "none", borderRadius: 8,
+          fontSize: 11, fontWeight: 700, cursor: "pointer",
+        }}>Sign in</button>
+      </div>
+
+      {/* API sources */}
+      <div style={{
+        background: "#ffffff", borderRadius: 12,
+        boxShadow: "0 2px 16px rgba(0,0,0,0.08)",
+        border: "1px solid #E8E2D9",
+        padding: "1rem",
+      }}>
+        <div style={{ fontSize: 12, fontWeight: 800, color: "#1A1714", marginBottom: 8 }}>
+          Live Sources
+        </div>
+        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+          {[
+            { name: "Ticketmaster", active: true },
+            { name: "Eventbrite",   active: false },
+            { name: "Songkick",     active: false },
+            { name: "Bandsintown",  active: false },
+          ].map(src => (
+            <div key={src.name} style={{ display: "flex", alignItems: "center", gap: 7, fontSize: 11, color: src.active ? "#1A1714" : "#b0a898" }}>
+              <span style={{
+                width: 7, height: 7, borderRadius: "50%", flexShrink: 0,
+                background: src.active ? "#22c55e" : "#d4ccc4",
+                boxShadow: src.active ? "0 0 0 2px rgba(34,197,94,0.25)" : "none",
+              }} />
+              <span style={{ fontWeight: src.active ? 700 : 500 }}>{src.name}</span>
+              {!src.active && <span style={{ fontSize: 9, letterSpacing: "0.04em", color: "#b0a898" }}>soon</span>}
+            </div>
+          ))}
+        </div>
+        <div style={{ marginTop: 10, paddingTop: 8, borderTop: "1px solid #F0EDE8", fontSize: 10, color: "#9c8e82" }}>
+          {isError ? "Connection error" : `${totalEvents} events · synced ${syncedLabel}`}
         </div>
       </div>
     </div>
@@ -964,10 +1128,10 @@ export default function OnTonight() {
             <button
               onClick={() => setShowLocationModal(true)}
               style={{
-                background: "#fff", color: "#6b6055",
-                border: "1px dashed #d4ccc4",
+                background: "#fff", color: "#1A1714",
+                border: "1px solid #1A1714",
                 borderRadius: 20, padding: "4px 10px",
-                fontSize: 11, fontWeight: 600, cursor: "pointer",
+                fontSize: 11, fontWeight: 700, cursor: "pointer",
                 display: "flex", alignItems: "center", gap: 5,
               }}
             >
@@ -995,10 +1159,10 @@ export default function OnTonight() {
         </div>
       )}
 
-      {/* MAIN APP — two column */}
+      {/* MAIN APP — three column */}
       <div id="app" style={{
         display: isMobile ? "block" : "flex",
-        alignItems: "flex-start", gap: "1.5rem",
+        alignItems: "flex-start", gap: "1.25rem",
         padding: isMobile ? "1rem 1rem 3rem" : "1.5rem 2.5rem 3rem",
         maxWidth: "1400px", margin: "0 auto", width: "100%",
       }}>
@@ -1139,7 +1303,7 @@ export default function OnTonight() {
           </div>
         </div>
 
-        {/* RIGHT: event list */}
+        {/* CENTER: event list */}
         <div style={{
           flex: 1, minWidth: 0,
           maxHeight: isMobile ? "none" : "calc(100vh - 120px)",
@@ -1248,6 +1412,19 @@ export default function OnTonight() {
             ))}
           </div>
         </div>
+
+        {/* RIGHT: My Night panel */}
+        {!isMobile && (
+          <MyNightPanel
+            likedEvents={allEvents.filter(e => liked.has(e.id))}
+            onOpen={setSelectedEvent}
+            syncedLabel={syncedLabel}
+            isError={isError}
+            totalEvents={allEvents.length}
+            month={month}
+            year={year}
+          />
+        )}
       </div>
 
       {/* Global styles */}
