@@ -128,7 +128,7 @@ FRONTEND_URL=http://localhost:5173
 
 ### Database Schema
 
-Run the full schema in the Supabase SQL editor. Tables: `venues`, `events`, `profiles`, `saved_events`, `follows`. See `EventPulse_Roadmap.md` for the complete SQL.
+Run the full schema in the Supabase SQL editor. Tables: `venues`, `events`, `profiles`, `saved_events`, `follows`. See `OnTonight_Roadmap.md` for the complete SQL.
 
 Key constraints:
 - `events(source, source_id)` — unique constraint used for deduplication on sync
@@ -149,7 +149,7 @@ curl -X POST http://localhost:3001/api/admin/sync \
 
 | Service | URL |
 |---------|-----|
-| Frontend | https://eventpulse-ednedbs9o-wetmuds-projects.vercel.app |
+| Frontend | https://eventpulse-ednedbs9o-wetmuds-projects.vercel.app (URL pending rename) |
 | Backend health | https://eventpulse-production-0256.up.railway.app/api/health |
 
 ---

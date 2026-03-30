@@ -374,14 +374,14 @@ export default function OnTonight() {
 
         {/* Hero body — two columns */}
         <div style={{
-          display: "flex", flex: 1, alignItems: "flex-end",
-          padding: isMobile ? "2rem 1.5rem 0" : "2rem 2.5rem 0",
+          display: "flex", flex: 1, alignItems: "center",
+          padding: isMobile ? "2rem 1.5rem" : "2rem 2.5rem",
           gap: "3rem", maxWidth: "1400px", width: "100%", margin: "0 auto",
           flexDirection: isMobile ? "column" : "row",
         }}>
 
           {/* Left: editorial */}
-          <div style={{ flex: "0 0 55%", display: "flex", flexDirection: "column", justifyContent: "center", paddingBottom: "3rem" }}>
+          <div style={{ flex: "0 0 55%", display: "flex", flexDirection: "column", justifyContent: "center" }}>
             <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.12em", color: "#9c8e82", textTransform: "uppercase", marginBottom: "1.25rem" }}>
               ONTONIGHT · GTA
             </div>
@@ -433,7 +433,7 @@ export default function OnTonight() {
 
           {/* Right: poster image */}
           {!isMobile && (
-            <div style={{ flex: "0 0 42%", display: "flex", alignItems: "flex-end", justifyContent: "center", paddingBottom: 0 }}>
+            <div style={{ flex: "0 0 42%", display: "flex", alignItems: "center", justifyContent: "center", paddingBottom: 0 }}>
               <img
                 src="/venues-poster.png"
                 alt="GTA venues"
